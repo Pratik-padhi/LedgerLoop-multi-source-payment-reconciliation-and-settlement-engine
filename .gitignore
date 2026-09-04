@@ -16,6 +16,12 @@ htmlcov/
 .env
 .env.*
 GEMINI_API_KEY
+.venv/
+venv/
+
+# Local AI coding instructions
+CLAUDE.md
+claude.md
 
 # Generated outputs (regeneratable)
 outputs/

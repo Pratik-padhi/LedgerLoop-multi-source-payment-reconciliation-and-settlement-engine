@@ -1,6 +1,6 @@
 # LedgerLoop v2.1 — Python dependencies
 # The reconciliation engine itself uses only the Python standard library.
-# These are the external packages needed to run the Controller UI and test suite.
-
+# These packages are needed for the Controller UI and production serving.
 flask>=3.0
 pytest>=8.0
+gunicorn>=23.0

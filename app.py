@@ -127,6 +127,11 @@ def index():
     return send_from_directory(_UI_DIR, "index.html")
 
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
 # ---------------------------------------------------------------------------
 # /api/overview  — summary counts derived entirely from pipeline results
 # ---------------------------------------------------------------------------
