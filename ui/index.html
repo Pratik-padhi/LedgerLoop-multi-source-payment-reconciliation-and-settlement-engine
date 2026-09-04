@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LedgerLoop</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   LedgerLoop — Design Tokens
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  --bg:          #F5F2ED;
+  --bg-wash:     #EDEAE4;
+  --surface:     #FFFFFF;
+  --surface-2:   #F8F6F2;
+  --surface-3:   #EFECE7;
+  --border:      #DDD8D0;
+  --border-l:    #C8C2B8;
+  --text:        #1B202C;
+  --text-2:      #4A4F5C;
+  --text-3:      #7D8290;
+  --text-4:      #A8ACB8;
+
+  --accent:      #B85C4A;
+  --accent-hover:#A34F3E;
+  --accent-soft: #F4E4E0;
+  --accent-text: #9A4838;
+
+  --green:       #3D7A5F;
+  --green-bg:    #E6F0EB;
+  --green-text:  #2D5C46;
+
+  --amber:       #A67C3D;
+  --amber-bg:    #F5EDE0;
+  --amber-text:  #7A5C2C;
+
+  --red:         #B84A4A;
+  --red-bg:      #F4E0E0;
+  --red-text:    #8C3838;
+
+  --mono-bg:     #F0EDE8;
+
+  --shadow-xs:   0 1px 2px rgba(27,32,44,.04);
+  --shadow-sm:   0 1px 3px rgba(27,32,44,.06), 0 1px 2px rgba(27,32,44,.04);
+  --shadow:      0 2px 8px rgba(27,32,44,.06), 0 1px 3px rgba(27,32,44,.04);
+  --shadow-md:   0 4px 16px rgba(27,32,44,.07), 0 2px 6px rgba(27,32,44,.04);
+  --shadow-lg:   0 8px 32px rgba(27,32,44,.08), 0 4px 12px rgba(27,32,44,.04);
+
+  --radius:      6px;
+  --radius-lg:   10px;
+  --radius-xl:   14px;
+  --radius-pill: 100px;
+
+  --font-body:   'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-display:'Newsreader', Georgia, 'Times New Roman', serif;
+  --font-mono:   'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  --sidebar-w:   220px;
+}
+
+/* ─── Dark theme ─────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:          #111318;
+    --bg-wash:     #161820;
+    --surface:     #1A1D26;
+    --surface-2:   #1F222C;
+    --surface-3:   #252834;
+    --border:      #2C3040;
+    --border-l:    #363A4C;
+    --text:        #E4E2DE;
+    --text-2:      #A0A4B0;
+    --text-3:      #6A6E7C;
+    --text-4:      #484C58;
+
+    --accent:      #D4816E;
+    --accent-hover:#C06E5C;
+    --accent-soft: #2A1E1A;
+    --accent-text: #E09888;
+
+    --green:       #5EBA88;
+    --green-bg:    #16241E;
+    --green-text:  #7ACC9E;
+
+    --amber:       #CDA055;
+    --amber-bg:    #241E14;
+    --amber-text:  #D4B06A;
+
+    --red:         #D47070;
+    --red-bg:      #281616;
+    --red-text:    #E08888;
+
+    --mono-bg:     #1E2028;
+
+    --shadow-xs:   0 1px 2px rgba(0,0,0,.2);
+    --shadow-sm:   0 1px 3px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.15);
+    --shadow:      0 2px 8px rgba(0,0,0,.25), 0 1px 3px rgba(0,0,0,.15);
+    --shadow-md:   0 4px 16px rgba(0,0,0,.3), 0 2px 6px rgba(0,0,0,.15);
+    --shadow-lg:   0 8px 32px rgba(0,0,0,.35), 0 4px 12px rgba(0,0,0,.2);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:          #111318;
+  --bg-wash:     #161820;
+  --surface:     #1A1D26;
+  --surface-2:   #1F222C;
+  --surface-3:   #252834;
+  --border:      #2C3040;
+  --border-l:    #363A4C;
+  --text:        #E4E2DE;
+  --text-2:      #A0A4B0;
+  --text-3:      #6A6E7C;
+  --text-4:      #484C58;
+
+  --accent:      #D4816E;
+  --accent-hover:#C06E5C;
+  --accent-soft: #2A1E1A;
+  --accent-text: #E09888;
+
+  --green:       #5EBA88;
+  --green-bg:    #16241E;
+  --green-text:  #7ACC9E;
+
+  --amber:       #CDA055;
+  --amber-bg:    #241E14;
+  --amber-text:  #D4B06A;
+
+  --red:         #D47070;
+  --red-bg:      #281616;
+  --red-text:    #E08888;
+
+  --mono-bg:     #1E2028;
+
+  --shadow-xs:   0 1px 2px rgba(0,0,0,.2);
+  --shadow-sm:   0 1px 3px rgba(0,0,0,.25), 0 1px 2px rgba(0,0,0,.15);
+  --shadow:      0 2px 8px rgba(0,0,0,.25), 0 1px 3px rgba(0,0,0,.15);
+  --shadow-md:   0 4px 16px rgba(0,0,0,.3), 0 2px 6px rgba(0,0,0,.15);
+  --shadow-lg:   0 8px 32px rgba(0,0,0,.35), 0 4px 12px rgba(0,0,0,.2);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Reset & Base
+   ═══════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+h1, h2, h3, h4 { text-wrap: balance; font-weight: 600; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { cursor: pointer; font-family: inherit; border: none; background: none; }
+code, pre, .mono { font-family: var(--font-mono); }
+
+/* ═══════════════════════════════════════════════════════════
+   Layout
+   ═══════════════════════════════════════════════════════════ */
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ─── Sidebar ────────────────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.sidebar-head {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.logo-icon {
+  font-size: 18px;
+  opacity: .85;
+}
+.sidebar-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 4px;
+  letter-spacing: .01em;
+}
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-2);
+  border-radius: var(--radius);
+  transition: all .15s ease;
+  width: 100%;
+  text-align: left;
+}
+.nav-item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.nav-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.nav-label { flex: 1; }
+.nav-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  min-width: 20px;
+  text-align: center;
+}
+.sidebar-foot {
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.theme-btn {
+  font-size: 12px;
+  color: var(--text-3);
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  transition: all .15s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.theme-btn:hover { background: var(--surface-2); color: var(--text-2); }
+
+/* ─── Main ───────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+.main-head {
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.main-head h1 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text);
+}
+.main-head .meta {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px 60px;
+  scroll-behavior: smooth;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Panels
+   ═══════════════════════════════════════════════════════════ */
+.panel { display: none; }
+.panel.active {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   KPI Row
+   ═══════════════════════════════════════════════════════════ */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+@media (max-width: 860px) {
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .kpi-row { grid-template-columns: 1fr; }
+  .overview-2col { grid-template-columns: 1fr !important; }
+}
+.kpi {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px 16px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow .2s ease;
+}
+.kpi:hover { box-shadow: var(--shadow); }
+.kpi::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.kpi.kpi-total::before  { background: var(--text-3); }
+.kpi.kpi-match::before  { background: var(--green); }
+.kpi.kpi-review::before { background: var(--amber); }
+.kpi.kpi-unres::before  { background: var(--red); }
+.kpi-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+  margin-bottom: 6px;
+}
+.kpi-value {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  color: var(--text);
+}
+.kpi.kpi-match .kpi-value  { color: var(--green); }
+.kpi.kpi-review .kpi-value { color: var(--amber); }
+.kpi.kpi-unres .kpi-value  { color: var(--red); }
+.kpi-sub {
+  font-size: 11.5px;
+  color: var(--text-3);
+  margin-top: 5px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Summary Block
+   ═══════════════════════════════════════════════════════════ */
+.summary {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--text-2);
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+.summary strong { color: var(--text); font-weight: 600; }
+
+/* ═══════════════════════════════════════════════════════════
+   Pipeline Flow
+   ═══════════════════════════════════════════════════════════ */
+.pipeline {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 0;
+  margin-bottom: 24px;
+  align-items: stretch;
+}
+@media (max-width: 860px) {
+  .pipeline {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .pipeline-arrow { display: none; }
+}
+.pipe-tier {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s ease;
+}
+.pipe-tier:hover { box-shadow: var(--shadow); }
+.pipe-tier-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pipe-tier-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  letter-spacing: .04em;
+}
+.pipe-tier-label {
+  font-size: 11px;
+  color: var(--text-4);
+}
+.pipe-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.pipe-metric:last-child { border-bottom: none; }
+.pipe-metric .mk {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.pipe-metric .mv {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.pipe-metric .mv.highlight { color: var(--green); }
+.pipe-metric .mv.dim { color: var(--text-3); }
+.pipeline-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  color: var(--text-4);
+  font-size: 16px;
+}
+
+/* ─── LLM Activity Card ─────────────────────────────────── */
+.llm-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+  overflow: hidden;
+  border-left: 3px solid var(--accent);
+}
+.llm-card-head {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.llm-card-head h3 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.llm-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+}
+.llm-stat {
+  padding: 14px 18px;
+  border-right: 1px solid var(--border);
+}
+.llm-stat:last-child { border-right: none; }
+.llm-stat .ls-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.llm-stat .ls-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--text);
+}
+.llm-stat .ls-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 3px;
+}
+.llm-stat.ls-accent .ls-value { color: var(--accent); }
+.llm-stat.ls-green .ls-value { color: var(--green); }
+.llm-stat.ls-red .ls-value { color: var(--red); }
+.llm-txns {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.llm-txns .lt-label {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-right: 2px;
+}
+.llm-txn-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Card
+   ═══════════════════════════════════════════════════════════ */
+.card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+  overflow: hidden;
+  transition: box-shadow .2s ease;
+}
+.card:hover { box-shadow: var(--shadow); }
+.card-head {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.card-head h3 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.card-body { padding: 16px 18px; }
+
+/* ═══════════════════════════════════════════════════════════
+   Table
+   ═══════════════════════════════════════════════════════════ */
+.x-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.x-table th {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+  text-align: left;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.x-table td {
+  font-size: 12.5px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  vertical-align: middle;
+}
+.x-table tbody tr {
+  cursor: pointer;
+  transition: background .1s ease;
+}
+.x-table tbody tr:hover { background: var(--accent-soft); }
+.x-table tbody tr.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.x-table td:first-child {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text);
+}
+.x-table .empty {
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Chips / Badges
+   ═══════════════════════════════════════════════════════════ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.chip-match     { background: var(--green-bg);  color: var(--green-text); }
+.chip-review    { background: var(--amber-bg);  color: var(--amber-text); }
+.chip-unresolved{ background: var(--red-bg);    color: var(--red-text); }
+.chip-tier      { background: var(--surface-3); color: var(--text-3); font-family: var(--font-mono); font-size: 10.5px; }
+.chip-neutral   { background: var(--surface-3); color: var(--text-3); }
+.chip-yes       { background: var(--green-bg);  color: var(--green-text); }
+.chip-no        { background: var(--surface-3); color: var(--text-4); }
+
+/* ═══════════════════════════════════════════════════════════
+   Filter Bar
+   ═══════════════════════════════════════════════════════════ */
+.filter-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--surface);
+  color: var(--text-2);
+  transition: all .15s ease;
+}
+.filter-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.filter-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Exceptions Split Layout
+   ═══════════════════════════════════════════════════════════ */
+.exc-split {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.5fr);
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 920px) {
+  .exc-split { grid-template-columns: 1fr; }
+}
+
+/* ─── Detail Panel ───────────────────────────────────────── */
+.detail-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.detail-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.detail-tid {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.detail-body { padding: 20px; }
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 24px;
+  margin-bottom: 18px;
+}
+@media (max-width: 600px) {
+  .detail-grid { grid-template-columns: 1fr; }
+}
+.detail-field {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.detail-field:last-child { border-bottom: none; }
+.df-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+  margin-bottom: 3px;
+}
+.df-value {
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-word;
+}
+.df-value.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--mono-bg);
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* ─── Evidence Block ─────────────────────────────────────── */
+.evidence-block {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-top: 14px;
+}
+.evidence-block h4 {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.ev-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.ev-row:last-child { border-bottom: none; }
+.ev-row .ek {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  min-width: 140px;
+  flex-shrink: 0;
+}
+.ev-row .ev {
+  color: var(--text);
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Q&A Panel
+   ═══════════════════════════════════════════════════════════ */
+.qa-wrap {
+  max-width: 720px;
+}
+.qa-input-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+.qa-input-head {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.qa-input-head h3 {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.qa-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.qa-field {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.qa-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.qa-field::placeholder { color: var(--text-4); }
+.qa-send {
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
+  transition: background .15s ease;
+  white-space: nowrap;
+}
+.qa-send:hover { background: var(--accent-hover); }
+.qa-send:disabled { opacity: .45; cursor: default; }
+.qa-chips {
+  padding: 10px 18px 14px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.qa-chips .ch-label {
+  font-size: 11px;
+  color: var(--text-4);
+  line-height: 26px;
+  margin-right: 2px;
+}
+.qa-chip {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  font-weight: 500;
+  background: var(--surface-2);
+  color: var(--text-2);
+  transition: all .15s ease;
+  line-height: 1.5;
+}
+.qa-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ─── Q&A History ────────────────────────────────────────── */
+.qa-history { display: flex; flex-direction: column; gap: 2px; }
+.qa-ex {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.qa-ex-q {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.qa-q-mark {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  letter-spacing: .04em;
+}
+.qa-ex-meta {
+  padding: 10px 18px 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.qa-ex-a {
+  padding: 10px 18px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-2);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Loading / Empty States
+   ═══════════════════════════════════════════════════════════ */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-3);
+  font-size: 13px;
+  gap: 10px;
+}
+.loading::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty-msg {
+  padding: 50px 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 700px) {
+  .sidebar { display: none; }
+  .content { padding: 18px 16px 40px; }
+  .main-head { padding: 14px 16px; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Scrollbar (subtle)
+   ═══════════════════════════════════════════════════════════ */
+.content::-webkit-scrollbar { width: 6px; }
+.content::-webkit-scrollbar-track { background: transparent; }
+.content::-webkit-scrollbar-thumb { background: var(--border-l); border-radius: 3px; }
+.content::-webkit-scrollbar-thumb:hover { background: var(--text-4); }
+
+/* ═══════════════════════════════════════════════════════════
+   Focus visible
+   ═══════════════════════════════════════════════════════════ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Sidebar ──────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <div class="logo"><span class="logo-icon">⚖️</span> LedgerLoop</div>
+      <div class="sidebar-sub">Reconciliation Controller</div>
+    </div>
+    <nav class="sidebar-nav" id="nav">
+      <button class="nav-item active" data-panel="overview">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Overview</span>
+      </button>
+      <button class="nav-item" data-panel="exceptions">
+        <span class="nav-icon">⚠️</span>
+        <span class="nav-label">Exceptions</span>
+        <span class="nav-badge" id="exc-badge" style="display:none">0</span>
+      </button>
+      <button class="nav-item" data-panel="qa">
+        <span class="nav-icon">💬</span>
+        <span class="nav-label">Settlement Q&A</span>
+      </button>
+    </nav>
+    <div class="sidebar-foot">
+      <button class="theme-btn" id="theme-toggle" title="Toggle theme">
+        <span id="theme-icon">🌙</span>
+        <span id="theme-label">Dark</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────── -->
+  <div class="main">
+
+    <!-- Overview -->
+    <div class="panel active" id="panel-overview">
+      <div class="main-head">
+        <h1>Overview</h1>
+        <div class="meta">Pipeline results — read-only</div>
+      </div>
+      <div class="content" id="overview-content">
+        <div class="loading">Running pipeline…</div>
+      </div>
+    </div>
+
+    <!-- Exceptions -->
+    <div class="panel" id="panel-exceptions">
+      <div class="main-head">
+        <h1>Exception Queue</h1>
+        <div class="meta">Transactions requiring attention</div>
+      </div>
+      <div class="content" id="exceptions-content">
+        <div class="loading">Loading exceptions…</div>
+      </div>
+    </div>
+
+    <!-- Q&A -->
+    <div class="panel" id="panel-qa">
+      <div class="main-head">
+        <h1>Settlement Q&A</h1>
+        <div class="meta">Ask about any reconciled transaction</div>
+      </div>
+      <div class="content" id="qa-content"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   LedgerLoop Controller UI
+   ═══════════════════════════════════════════════════════════ */
+(function () {
+"use strict";
+
+const API = "";
+let _overview = null;
+let _exceptions = null;
+let _selected = null;
+let _qaInited = false;
+let _qaHist = [];
+
+/* ── Helpers ─────────────────────────────────────────────── */
+
+function esc(s) {
+  if (s == null) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function chip(status) {
+  const m = {
+    MATCH: "match", MATCHED: "match", PARTIAL_MATCH: "match",
+    HUMAN_REVIEW: "review",
+    UNRESOLVED: "unresolved", UNRESOLVED_FOR_TIER_1: "unresolved"
+  };
+  const c = m[status] || "neutral";
+  return `<span class="chip chip-${c}">${esc(status)}</span>`;
+}
+
+function tierChip(t) {
+  return `<span class="chip chip-tier">${esc(t)}</span>`;
+}
+
+function llmChip(v) {
+  return v ? `<span class="chip chip-yes">Yes</span>` : `<span class="chip chip-no">No</span>`;
+}
+
+/* ── Theme ───────────────────────────────────────────────── */
+
+function initTheme() {
+  const saved = localStorage.getItem("ll-theme");
+  if (saved) document.documentElement.setAttribute("data-theme", saved);
+  updateThemeBtn();
+}
+
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute("data-theme");
+  let next;
+  if (cur === "dark") next = "light";
+  else if (cur === "light") next = "";
+  else next = "dark";
+  if (next) document.documentElement.setAttribute("data-theme", next);
+  else document.documentElement.removeAttribute("data-theme");
+  localStorage.setItem("ll-theme", next);
+  updateThemeBtn();
+}
+
+function updateThemeBtn() {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const dark = cur === "dark" || (!cur && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  document.getElementById("theme-icon").textContent = dark ? "☀️" : "🌙";
+  document.getElementById("theme-label").textContent = dark ? "Light" : "Dark";
+}
+
+document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
+initTheme();
+
+/* ── Navigation ──────────────────────────────────────────── */
+
+document.getElementById("nav").addEventListener("click", function (e) {
+  const btn = e.target.closest(".nav-item");
+  if (!btn) return;
+  const pid = "panel-" + btn.dataset.panel;
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+  document.getElementById(pid).classList.add("active");
+  if (pid === "panel-overview" && !_overview) loadOverview();
+  if (pid === "panel-exceptions" && !_exceptions) loadExceptions();
+  if (pid === "panel-qa" && !_qaInited) initQA();
+});
+
+/* ═══════════════════════════════════════════════════════════
+   Overview
+   ═══════════════════════════════════════════════════════════ */
+
+async function loadOverview() {
+  const el = document.getElementById("overview-content");
+  try {
+    const res = await fetch(API + "/api/overview");
+    if (!res.ok) throw new Error(res.statusText);
+    _overview = await res.json();
+  } catch (err) {
+    el.innerHTML = `<div class="empty-msg">Could not load overview — ${esc(err.message)}</div>`;
+    return;
+  }
+  renderOverview();
+}
+
+function renderOverview() {
+  const d = _overview;
+  const el = document.getElementById("overview-content");
+  const sc = d.status_counts || {};
+  const hr  = sc.HUMAN_REVIEW || 0;
+  const unr = sc.UNRESOLVED || 0;
+  const mt  = sc.MATCH || sc.MATCHED || 0;
+  const prt = sc.PARTIAL_MATCH || 0;
+  const uft = sc.UNRESOLVED_FOR_TIER_1 || 0;
+  const total = d.total_transactions;
+
+  // nav badge
+  const badgeCount = hr + unr;
+  const badge = document.getElementById("exc-badge");
+  if (badgeCount > 0) {
+    badge.textContent = badgeCount;
+    badge.style.display = "";
+  } else {
+    badge.style.display = "none";
+  }
+
+  const pct = v => total ? Math.round(v / total * 100) : 0;
+
+  el.innerHTML = `
+    <!-- KPIs -->
+    <div class="kpi-row">
+      <div class="kpi kpi-total">
+        <div class="kpi-label">Transactions</div>
+        <div class="kpi-value">${total}</div>
+        <div class="kpi-sub">across all sources</div>
+      </div>
+      <div class="kpi kpi-match">
+        <div class="kpi-label">Matched</div>
+        <div class="kpi-value">${mt}</div>
+        <div class="kpi-sub">${pct(mt)}% reconciled</div>
+      </div>
+      <div class="kpi kpi-review">
+        <div class="kpi-label">Human Review</div>
+        <div class="kpi-value">${hr}</div>
+        <div class="kpi-sub">needs investigation</div>
+      </div>
+      <div class="kpi kpi-unres">
+        <div class="kpi-label">Unresolved</div>
+        <div class="kpi-value">${unr}</div>
+        <div class="kpi-sub">no usable evidence</div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="summary">
+      <strong>${total}</strong> logical transactions processed through the 3-tier pipeline.
+      <strong>${mt}</strong> matched (${pct(mt)}%).
+      <strong>${hr}</strong> flagged for human review.
+      <strong>${unr}</strong> unresolved.
+      ${prt > 0 ? `<strong>${prt}</strong> partial matches at Tier 1.` : ""}
+      ${uft > 0 ? `<strong>${uft}</strong> unresolved at Tier 1.` : ""}
+      ${d.llm_calls_made > 0
+        ? `Gemini consulted ${d.llm_calls_made} time${d.llm_calls_made > 1 ? "s" : ""} — ${d.llm_recommendations_validated} accepted, ${d.llm_recommendations_rejected} overridden.`
+        : "Gemini was not consulted."}
+    </div>
+
+    <!-- Pipeline Flow -->
+    <div class="pipeline">
+      <div class="pipe-tier">
+        <div class="pipe-tier-head">
+          <span class="pipe-tier-name">TIER 1</span>
+          <span class="pipe-tier-label">Exact match</span>
+        </div>
+        <div class="pipe-metric"><span class="mk">Input</span><span class="mv">${d.tier1_summary.total_logical_transactions}</span></div>
+        <div class="pipe-metric"><span class="mk">Matched</span><span class="mv highlight">${d.tier1_summary.matched_count}</span></div>
+        <div class="pipe-metric"><span class="mk">Partial</span><span class="mv dim">${d.tier1_summary.partial_match_count}</span></div>
+        <div class="pipe-metric"><span class="mk">Residue</span><span class="mv">${d.tier1_summary.total_logical_transactions - d.tier1_summary.matched_count}</span></div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipe-tier">
+        <div class="pipe-tier-head">
+          <span class="pipe-tier-name">TIER 2</span>
+          <span class="pipe-tier-label">Tolerance / fuzzy</span>
+        </div>
+        <div class="pipe-metric"><span class="mk">Input</span><span class="mv">${d.tier2_summary.total_residue_evaluated}</span></div>
+        <div class="pipe-metric"><span class="mk">Matched</span><span class="mv highlight">${d.tier2_summary.matched_count}</span></div>
+        <div class="pipe-metric"><span class="mk">Residue</span><span class="mv">${d.tier2_summary.unresolved_count}</span></div>
+      </div>
+      <div class="pipeline-arrow">→</div>
+      <div class="pipe-tier">
+        <div class="pipe-tier-head">
+          <span class="pipe-tier-name">TIER 3</span>
+          <span class="pipe-tier-label">LLM-assisted</span>
+        </div>
+        <div class="pipe-metric"><span class="mk">Input</span><span class="mv">${d.tier3_summary.total_residue_evaluated}</span></div>
+        <div class="pipe-metric"><span class="mk">Matched</span><span class="mv highlight">${d.tier3_summary.match_count}</span></div>
+        <div class="pipe-metric"><span class="mk">Human review</span><span class="mv">${d.tier3_summary.human_review_count}</span></div>
+        <div class="pipe-metric"><span class="mk">Unresolved</span><span class="mv">${d.tier3_summary.unresolved_count}</span></div>
+        ${d.llm_calls_made > 0 ? `<div class="pipe-metric"><span class="mk">LLM calls</span><span class="mv" style="color:var(--accent)">${d.llm_calls_made}</span></div>` : ""}
+      </div>
+    </div>
+
+    <!-- LLM Activity -->
+    ${d.llm_calls_made > 0 ? `
+    <div class="llm-card">
+      <div class="llm-card-head">
+        <h3>🤖 Gemini LLM Activity</h3>
+        <span class="chip chip-tier">Tier 3</span>
+      </div>
+      <div class="llm-stats">
+        <div class="llm-stat ls-accent">
+          <div class="ls-label">Calls Made</div>
+          <div class="ls-value">${d.llm_calls_made}</div>
+          <div class="ls-sub">split-settlement adjudications</div>
+        </div>
+        <div class="llm-stat ls-green">
+          <div class="ls-label">Accepted</div>
+          <div class="ls-value">${d.llm_recommendations_validated}</div>
+          <div class="ls-sub">recommendations validated</div>
+        </div>
+        <div class="llm-stat ls-red">
+          <div class="ls-label">Rejected</div>
+          <div class="ls-value">${d.llm_recommendations_rejected}</div>
+          <div class="ls-sub">overridden by validator</div>
+        </div>
+      </div>
+      <div class="llm-txns">
+        <span class="lt-label">LLM-consulted:</span>
+        ${Object.entries(d.rule_counts).filter(([k]) => k.includes("LLM") || k.includes("SPLIT")).map(([k,v]) =>
+          `<span class="chip chip-tier">${esc(k)} (${v})</span>`
+        ).join("")}
+        <span class="chip chip-review">PAY109 — HUMAN_REVIEW</span>
+      </div>
+    </div>` : `
+    <div class="llm-card" style="border-left-color:var(--text-4)">
+      <div class="llm-card-head">
+        <h3>🤖 Gemini LLM Activity</h3>
+      </div>
+      <div style="padding:14px 18px;color:var(--text-3);font-size:13px">
+        Gemini was not consulted — no GEMINI_API_KEY was set when the pipeline ran.
+        Set the key and restart the server to enable LLM-assisted matching.
+      </div>
+    </div>`}
+
+    <!-- Two-col: Status + Tier -->
+    <div class="overview-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="card" style="margin-bottom:0">
+        <div class="card-head"><h3>By Status</h3></div>
+        <div class="card-body" style="padding:0">
+          <table class="x-table">
+            <thead><tr><th>Status</th><th>Count</th><th>Share</th></tr></thead>
+            <tbody>${Object.entries(sc).map(([k,v]) => `
+              <tr>
+                <td>${chip(k)}</td>
+                <td style="font-variant-numeric:tabular-nums;font-weight:600">${v}</td>
+                <td style="color:var(--text-3)">${pct(v)}%</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="card-head"><h3>By Tier</h3></div>
+        <div class="card-body" style="padding:0">
+          <table class="x-table">
+            <thead><tr><th>Tier</th><th>Transactions</th></tr></thead>
+            <tbody>${Object.entries(d.tier_counts).map(([k,v]) => `
+              <tr>
+                <td>${tierChip(k)}</td>
+                <td style="font-variant-numeric:tabular-nums;font-weight:600">${v}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rules -->
+    <div class="card">
+      <div class="card-head"><h3>Resolution Rules</h3></div>
+      <div class="card-body" style="padding:0">
+        <table class="x-table">
+          <thead><tr><th>Rule</th><th>Count</th></tr></thead>
+          <tbody>${Object.entries(d.rule_counts).sort((a,b) => b[1]-a[1]).map(([k,v]) => `
+            <tr>
+              <td style="font-family:var(--font-mono);font-size:12px">${esc(k)}</td>
+              <td style="font-variant-numeric:tabular-nums;font-weight:600">${v}</td>
+            </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Exceptions
+   ═══════════════════════════════════════════════════════════ */
+
+async function loadExceptions() {
+  const el = document.getElementById("exceptions-content");
+  try {
+    const res = await fetch(API + "/api/exceptions");
+    if (!res.ok) throw new Error(res.statusText);
+    _exceptions = await res.json();
+  } catch (err) {
+    el.innerHTML = `<div class="empty-msg">Could not load exceptions — ${esc(err.message)}</div>`;
+    return;
+  }
+  _selected = null;
+  renderExceptions("ALL");
+}
+
+function renderExceptions(filter) {
+  if (!_exceptions) return;
+  const el = document.getElementById("exceptions-content");
+  let items = _exceptions.exceptions || [];
+  if (filter === "HUMAN_REVIEW") items = items.filter(e => e.status === "HUMAN_REVIEW");
+  if (filter === "UNRESOLVED")   items = items.filter(e => e.status === "UNRESOLVED");
+
+  el.innerHTML = `
+    <div class="filter-bar">
+      <button class="filter-btn ${filter === "ALL" ? "active" : ""}" data-filter="ALL">All</button>
+      <button class="filter-btn ${filter === "HUMAN_REVIEW" ? "active" : ""}" data-filter="HUMAN_REVIEW">Human Review</button>
+      <button class="filter-btn ${filter === "UNRESOLVED" ? "active" : ""}" data-filter="UNRESOLVED">Unresolved</button>
+    </div>
+    <div class="exc-split">
+      <div>
+        <div class="card" style="margin-bottom:0">
+          <div class="card-head"><h3>${items.length} exception${items.length !== 1 ? "s" : ""}</h3></div>
+          <div class="card-body" style="padding:0">
+            <table class="x-table">
+              <thead><tr><th>Transaction</th><th>Status</th><th>Rule</th></tr></thead>
+              <tbody>
+              ${items.length === 0
+                ? `<tr><td colspan="3" class="empty">No exceptions in this category</td></tr>`
+                : items.map(e => `
+                  <tr data-tid="${esc(e.transaction_id)}" class="${_selected === e.transaction_id ? "selected" : ""}">
+                    <td>${esc(e.transaction_id)} ${e.llm_consulted ? '<span class="chip chip-tier" style="margin-left:4px">LLM</span>' : ""}</td>
+                    <td>${chip(e.status)}</td>
+                    <td style="font-size:11px;color:var(--text-3)">${esc(e.rule || "—")}</td>
+                  </tr>`).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div id="exc-detail">
+        ${_selected ? "" : `<div class="empty-msg" style="padding:50px 20px">Select a transaction to view details</div>`}
+      </div>
+    </div>
+  `;
+
+  // Row clicks
+  el.querySelectorAll(".x-table tbody tr[data-tid]").forEach(tr => {
+    tr.addEventListener("click", () => {
+      _selected = tr.dataset.tid;
+      renderExceptions(filter);
+      loadDetail(_selected);
+    });
+  });
+
+  // Filter clicks
+  el.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => renderExceptions(btn.dataset.filter));
+  });
+
+  if (_selected) loadDetail(_selected);
+}
+
+async function loadDetail(tid) {
+  const box = document.getElementById("exc-detail");
+  if (!box) return;
+  box.innerHTML = `<div class="loading" style="padding:30px">Loading ${esc(tid)}…</div>`;
+  try {
+    const res = await fetch(API + "/api/transaction/" + encodeURIComponent(tid));
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      box.innerHTML = `<div class="empty-msg">${esc(err.error || "Not found")}</div>`;
+      return;
+    }
+    box.innerHTML = renderDetail(await res.json());
+  } catch (err) {
+    box.innerHTML = `<div class="empty-msg">${esc(err.message)}</div>`;
+  }
+}
+
+function renderDetail(d) {
+  const ev = d.evidence || {};
+  const mr = d.matched_records || {};
+  const evEntries = Object.entries(ev).filter(([,v]) => v !== null && v !== undefined);
+  const gw = mr.gateway || "—";
+  const bn = mr.bank || "—";
+  const lg = mr.ledger || "—";
+
+  let llmBlock = "";
+  if (d.llm_consulted !== undefined) {
+    const rec = d.llm_recommendation;
+    llmBlock = `
+      <div class="detail-field"><div class="df-label">LLM Consulted</div><div class="df-value">${llmChip(d.llm_consulted)}</div></div>
+      ${rec ? `<div class="detail-field"><div class="df-label">LLM Recommendation</div>
+        <div class="df-value mono">${esc(rec.decision || "—")} — bank IDs: ${esc(JSON.stringify(rec.bank_row_ids || []))}</div>
+      </div>` : ""}`;
+  }
+
+  return `
+    <div class="detail-card">
+      <div class="detail-head">
+        <span class="detail-tid">${esc(d.transaction_id)}</span>
+        ${chip(d.status)} ${tierChip(d.tier)}
+      </div>
+      <div class="detail-body">
+        <div class="detail-grid">
+          <div>
+            <div class="detail-field"><div class="df-label">Status</div><div class="df-value">${chip(d.status)}</div></div>
+            <div class="detail-field"><div class="df-label">Tier</div><div class="df-value">${tierChip(d.tier)}</div></div>
+            <div class="detail-field"><div class="df-label">Rule</div><div class="df-value">${esc(d.rule || "—")}</div></div>
+            <div class="detail-field"><div class="df-label">Reason</div><div class="df-value">${esc(d.reason || "—")}</div></div>
+          </div>
+          <div>
+            <div class="detail-field"><div class="df-label">Gateway Row</div><div class="df-value mono">${esc(gw)}</div></div>
+            <div class="detail-field"><div class="df-label">Bank Row(s)</div><div class="df-value mono">${esc(bn)}</div></div>
+            <div class="detail-field"><div class="df-label">Ledger Row</div><div class="df-value mono">${esc(lg)}</div></div>
+            ${llmBlock}
+          </div>
+        </div>
+
+        ${evEntries.length > 0 ? `
+          <div class="evidence-block">
+            <h4>Evidence</h4>
+            ${evEntries.map(([k,v]) => `
+              <div class="ev-row">
+                <span class="ek">${esc(k)}</span>
+                <span class="ev">${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span>
+              </div>`).join("")}
+          </div>` : ""}
+
+        ${Object.keys(mr).length > 0 ? `
+          <div class="evidence-block" style="margin-top:10px">
+            <h4>Matched Source Records</h4>
+            ${Object.entries(mr).filter(([,v]) => v).map(([src,rid]) => `
+              <div class="ev-row">
+                <span class="ek">${esc(src)}</span>
+                <span class="ev">${esc(String(rid))}</span>
+              </div>`).join("")}
+          </div>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Q&A
+   ═══════════════════════════════════════════════════════════ */
+
+function initQA() {
+  if (_qaInited) return;
+  _qaInited = true;
+  const el = document.getElementById("qa-content");
+
+  const examples = [
+    "What happened to PAY109?",
+    "Why is PAY109 matched?",
+    "Reconciliation status of PAY109?",
+    "What evidence supports PAY109?",
+    "Which transactions need human review?",
+    "Show unresolved transactions.",
+    "Which matched by split settlement rule?",
+  ];
+
+  el.innerHTML = `
+    <div class="qa-wrap">
+      <div class="qa-input-card">
+        <div class="qa-input-head"><h3>Ask a question</h3></div>
+        <div class="qa-input-row">
+          <input class="qa-field" id="qa-input" placeholder="e.g. What happened to PAY109?" autocomplete="off">
+          <button class="qa-send" id="qa-btn">Ask</button>
+        </div>
+        <div class="qa-chips">
+          <span class="ch-label">Try:</span>
+          ${examples.map(e => `<button class="qa-chip">${esc(e)}</button>`).join("")}
+        </div>
+      </div>
+      <div class="qa-history" id="qa-history"></div>
+    </div>
+  `;
+
+  const input = document.getElementById("qa-input");
+  const btn   = document.getElementById("qa-btn");
+  const hist  = document.getElementById("qa-history");
+
+  function submit() {
+    const q = input.value.trim();
+    if (!q) return;
+    input.value = "";
+    askQA(q, hist);
+  }
+
+  btn.addEventListener("click", submit);
+  input.addEventListener("keydown", e => { if (e.key === "Enter") submit(); });
+
+  el.querySelectorAll(".qa-chip").forEach(b => {
+    b.addEventListener("click", () => { input.value = b.textContent; submit(); });
+  });
+}
+
+async function askQA(question, histEl) {
+  const id = "q-" + Date.now();
+  histEl.insertAdjacentHTML("afterbegin", `
+    <div class="qa-ex" id="${id}">
+      <div class="qa-ex-q">
+        <span class="qa-q-mark">Q</span>
+        <span>${esc(question)}</span>
+      </div>
+      <div class="qa-ex-a" style="color:var(--text-3);font-style:italic;padding:12px 18px">Thinking…</div>
+    </div>
+  `);
+  const box = document.getElementById(id);
+
+  try {
+    const res = await fetch(API + "/api/qa", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok) throw new Error(res.statusText);
+    const ans = await res.json();
+    _qaHist.push(ans);
+
+    let meta = "";
+    meta += `<span class="chip ${ans.found ? "chip-match" : "chip-neutral"}">${ans.found ? "Found" : "Not found"}</span>`;
+    meta += `<span class="chip chip-tier">${esc(ans.intent)}</span>`;
+    if (ans.llm_used) meta += `<span class="chip chip-yes">LLM used</span>`;
+    if (ans.llm_unavailable) meta += `<span class="chip chip-review">LLM unavailable</span>`;
+
+    box.innerHTML = `
+      <div class="qa-ex-q">
+        <span class="qa-q-mark">Q</span>
+        <span>${esc(question)}</span>
+      </div>
+      <div class="qa-ex-meta">${meta}</div>
+      <div class="qa-ex-a">${esc(ans.explanation || "")}</div>
+    `;
+  } catch (err) {
+    box.innerHTML = `
+      <div class="qa-ex-q">
+        <span class="qa-q-mark">Q</span>
+        <span>${esc(question)}</span>
+      </div>
+      <div class="qa-ex-a" style="color:var(--red)">Error: ${esc(err.message)}</div>
+    `;
+  }
+}
+
+/* ── Boot ────────────────────────────────────────────────── */
+loadOverview();
+
+})();
+</script>
+</body>
+</html>

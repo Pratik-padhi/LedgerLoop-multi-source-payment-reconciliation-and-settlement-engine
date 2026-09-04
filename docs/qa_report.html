@@ -1,0 +1,800 @@
+<title>LedgerLoop Q&A Agent</title>
+<style>
+  /* ── Tokens ─────────────────────────────────────────────── */
+  :root {
+    --bg:        #f7f8fa;
+    --surface:   #ffffff;
+    --surface-2: #f0f2f6;
+    --border:    #dde1ea;
+    --text:      #1a1d26;
+    --text-2:    #4a5068;
+    --text-3:    #7a82a0;
+    --accent:    #3b54e8;
+    --accent-bg: #eef1fd;
+    --green:     #1a7a4a;
+    --green-bg:  #e6f5ee;
+    --amber:     #8a5a00;
+    --amber-bg:  #fef4dc;
+    --red:       #b52b2b;
+    --red-bg:    #fdeaea;
+    --mono-bg:   #f0f2f6;
+    --shadow:    0 1px 3px rgba(0,0,0,.07), 0 4px 12px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:        #0f1017;
+      --surface:   #181b27;
+      --surface-2: #1f2336;
+      --border:    #2c3050;
+      --text:      #e8eaf4;
+      --text-2:    #9da4c0;
+      --text-3:    #5a6080;
+      --accent:    #6b82f5;
+      --accent-bg: #1a2060;
+      --green:     #4cba80;
+      --green-bg:  #0d2e1c;
+      --amber:     #e0a840;
+      --amber-bg:  #2c1e00;
+      --red:       #e06060;
+      --red-bg:    #2e0f0f;
+      --mono-bg:   #1f2336;
+      --shadow:    0 1px 3px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.2);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:        #0f1017;
+    --surface:   #181b27;
+    --surface-2: #1f2336;
+    --border:    #2c3050;
+    --text:      #e8eaf4;
+    --text-2:    #9da4c0;
+    --text-3:    #5a6080;
+    --accent:    #6b82f5;
+    --accent-bg: #1a2060;
+    --green:     #4cba80;
+    --green-bg:  #0d2e1c;
+    --amber:     #e0a840;
+    --amber-bg:  #2c1e00;
+    --red:       #e06060;
+    --red-bg:    #2e0f0f;
+    --mono-bg:   #1f2336;
+    --shadow:    0 1px 3px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.2);
+  }
+
+  /* ── Reset & base ───────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0;
+  }
+  h1,h2,h3,h4 { text-wrap: balance; font-family: 'Inter', system-ui, sans-serif; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code, pre {
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+    font-size: 12.5px;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────── */
+  .wrap {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 36px 24px 80px;
+  }
+
+  /* ── Page header ────────────────────────────────────────── */
+  .page-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 36px;
+  }
+  .page-header .icon {
+    width: 40px; height: 40px;
+    background: var(--accent-bg);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .page-header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 2px;
+    color: var(--text);
+    letter-spacing: -.3px;
+  }
+  .page-header .meta {
+    font-size: 12px;
+    color: var(--text-3);
+    letter-spacing: .02em;
+  }
+  .page-header .meta span { color: var(--accent); font-weight: 600; }
+
+  /* ── Section titles ─────────────────────────────────────── */
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--text-3);
+    margin: 0 0 12px;
+  }
+
+  /* ── Stat row ───────────────────────────────────────────── */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin-bottom: 36px;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 18px 14px;
+    box-shadow: var(--shadow);
+  }
+  .stat .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--text-3);
+    margin-bottom: 4px;
+  }
+  .stat .value {
+    font-size: 28px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    color: var(--text);
+  }
+  .stat .sub {
+    font-size: 11px;
+    color: var(--text-3);
+    margin-top: 3px;
+  }
+  .stat.green .value { color: var(--green); }
+  .stat.amber .value { color: var(--amber); }
+
+  /* ── Card ───────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+  }
+  .card h3 {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0 0 14px;
+    color: var(--text);
+  }
+
+  /* ── Chip / badge ───────────────────────────────────────── */
+  .chip {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    vertical-align: middle;
+  }
+  .chip.match   { background: var(--green-bg); color: var(--green); }
+  .chip.review  { background: var(--amber-bg); color: var(--amber); }
+  .chip.unresolved { background: var(--red-bg);   color: var(--red);   }
+  .chip.tier    { background: var(--accent-bg); color: var(--accent); }
+  .chip.rule    { background: var(--mono-bg); color: var(--text-2); }
+
+  /* ── File list ───────────────────────────────────────────── */
+  .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .file-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .file-row:last-child { border-bottom: none; }
+  .file-row .path {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    flex: 0 0 auto;
+    min-width: 220px;
+  }
+  .file-row .desc { color: var(--text-2); flex: 1; }
+  .file-row .tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    flex: 0 0 auto;
+  }
+  .file-row .tag.new { color: var(--green); }
+
+  /* ── Test results table ──────────────────────────────────── */
+  .test-table { width: 100%; border-collapse: collapse; }
+  .test-table th {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--text-3);
+    text-align: left;
+    padding: 0 12px 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .test-table td {
+    font-size: 12.5px;
+    padding: 7px 12px 7px 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text-2);
+  }
+  .test-table tr:last-child td { border-bottom: none; }
+  .test-table td:first-child { color: var(--text); font-weight: 500; }
+  .test-table td code {
+    background: var(--mono-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11.5px;
+  }
+  .test-count {
+    font-size: 12px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--green);
+  }
+
+  /* ── Q&A demo ────────────────────────────────────────────── */
+  .qa-demo {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .qa-exchange {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .qa-q {
+    background: var(--accent-bg);
+    padding: 10px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .qa-q::before { content: "Q"; font-size: 10px; font-weight: 700; opacity: .7; }
+  .qa-meta {
+    background: var(--surface-2);
+    padding: 4px 14px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+  .qa-a {
+    background: var(--surface);
+    padding: 12px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--text);
+    line-height: 1.65;
+    tab-size: 2;
+  }
+
+  /* ── Constraint list ──────────────────────────────────────── */
+  .constraint-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
+  }
+  .constraint-item {
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12.5px;
+    align-items: flex-start;
+  }
+  .constraint-item .icon-c {
+    flex-shrink: 0;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--green-bg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    color: var(--green);
+    font-weight: 700;
+    margin-top: 1px;
+  }
+  .constraint-item .text { color: var(--text-2); line-height: 1.5; }
+
+  /* ── Section spacing ─────────────────────────────────────── */
+  .section { margin-bottom: 40px; }
+
+  /* ── Inline monospace ────────────────────────────────────── */
+  .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    background: var(--mono-bg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--text-2);
+  }
+  .pass-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--green-bg);
+    border: 1px solid var(--green);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 28px;
+    font-size: 13px;
+    color: var(--green);
+    font-weight: 600;
+  }
+  .pass-banner .big { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 32px 0;
+  }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="icon">🔍</div>
+    <div>
+      <h1>Settlement Q&amp;A Agent</h1>
+      <div class="meta">LedgerLoop v2.1 &nbsp;·&nbsp; 2026-09-03 &nbsp;·&nbsp; <span>224 tests passed</span> &nbsp;·&nbsp; Baseline intact</div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stat-row">
+    <div class="stat green">
+      <div class="label">Total tests</div>
+      <div class="value">224</div>
+      <div class="sub">0 failing</div>
+    </div>
+    <div class="stat green">
+      <div class="label">Q&amp;A tests</div>
+      <div class="value">77</div>
+      <div class="sub">12 groups</div>
+    </div>
+    <div class="stat">
+      <div class="label">Pre-existing</div>
+      <div class="value">147</div>
+      <div class="sub">unchanged</div>
+    </div>
+    <div class="stat">
+      <div class="label">Subtests</div>
+      <div class="value">30</div>
+      <div class="sub">all passed</div>
+    </div>
+    <div class="stat">
+      <div class="label">New files</div>
+      <div class="value">2</div>
+      <div class="sub">core + tests</div>
+    </div>
+  </div>
+
+  <!-- Pass banner -->
+  <div class="pass-banner">
+    <span class="big">✓</span>
+    <span>python -m pytest -v &nbsp;→&nbsp; <strong>224 passed, 30 subtests passed</strong> in 1.1 s &nbsp;·&nbsp; Tier 1 / 2 / 3 files untouched</span>
+  </div>
+
+  <!-- Files created/modified -->
+  <div class="section">
+    <div class="section-title">Files created / modified</div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <div class="file-list" style="padding:4px 0;">
+        <div class="file-row" style="padding:10px 18px;">
+          <span class="path">core/qa_agent.py</span>
+          <span class="desc">Settlement Q&amp;A agent — index, classifier, answer composers, SettlementQAAgent, build_qa_agent</span>
+          <span class="tag new">NEW</span>
+        </div>
+        <div class="file-row" style="padding:10px 18px;">
+          <span class="path">tests/test_qa_agent.py</span>
+          <span class="desc">77 focused tests across 12 test classes + unit tests for classifier and index</span>
+          <span class="tag new">NEW</span>
+        </div>
+        <div class="file-row" style="padding:10px 18px;">
+          <span class="path">core/match_exact.py</span>
+          <span class="desc">Unchanged — Tier 1 exact matching</span>
+          <span class="tag">UNTOUCHED</span>
+        </div>
+        <div class="file-row" style="padding:10px 18px;">
+          <span class="path">core/match_fuzzy.py</span>
+          <span class="desc">Unchanged — Tier 2 tolerance matching</span>
+          <span class="tag">UNTOUCHED</span>
+        </div>
+        <div class="file-row" style="padding:10px 18px;">
+          <span class="path">core/match_llm.py</span>
+          <span class="desc">Unchanged — Tier 3 + GeminiLLMClient</span>
+          <span class="tag">UNTOUCHED</span>
+        </div>
+        <div class="file-row" style="padding:10px 18px; border-bottom:none;">
+          <span class="path">data/*.csv &nbsp; ground_truth.csv</span>
+          <span class="desc">Unchanged — source data and evaluation key</span>
+          <span class="tag">UNTOUCHED</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Architecture -->
+  <div class="section">
+    <div class="section-title">Architecture</div>
+    <div class="card">
+      <h3>Component overview</h3>
+      <table class="test-table">
+        <thead>
+          <tr><th>Component</th><th>Responsibility</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>ReconciliationIndex</code></td>
+            <td>Immutable in-memory index built from Tier 1/2/3 result lists. Tier 3 > Tier 2 matched > Tier 1 priority. Provides <code>get(txn_id)</code>, <code>filter_by_status()</code>, <code>filter_by_rule()</code>. Never touches the pipeline modules.</td>
+          </tr>
+          <tr>
+            <td><code>classify_intent()</code></td>
+            <td>Deterministic regex/keyword classifier. Returns one of 7 intent constants plus extracted parameters (transaction_id, rule, status). No LLM. Handles case-insensitive PAY IDs, refund suffixes, phrasing variants.</td>
+          </tr>
+          <tr>
+            <td>Answer composers</td>
+            <td>Pure functions over retrieved data — <code>_compose_lookup_answer</code>, <code>_compose_why_answer</code>, <code>_compose_evidence_answer</code>, <code>_compose_filter_answer</code>, <code>_compose_rule_filter_answer</code>. Always produce a valid explanation from structured data alone.</td>
+          </tr>
+          <tr>
+            <td><code>SettlementQAAgent.ask()</code></td>
+            <td>Classifies → retrieves → composes template answer → optionally asks Gemini to compose prose from the retrieved slice (never the full dataset). Returns <code>QAAnswer</code> with <code>found</code>, <code>supported</code>, <code>llm_used</code>, <code>llm_unavailable</code> flags.</td>
+          </tr>
+          <tr>
+            <td><code>build_qa_agent()</code></td>
+            <td>Convenience constructor: builds index + agent from raw <code>run_tier1</code> / <code>run_tier2</code> / <code>run_tier3</code> output in one call.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Supported intents -->
+  <div class="section">
+    <div class="section-title">Supported question intents</div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table class="test-table" style="margin:0;">
+        <thead>
+          <tr style="padding:0 18px;">
+            <th style="padding:10px 12px 8px 18px;">Intent</th>
+            <th style="padding:10px 12px 8px 0;">Example question</th>
+            <th style="padding:10px 12px 8px 0;">LLM used?</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;"><code>LOOKUP</code></td>
+            <td>"What happened to PAY109?"</td>
+            <td>Optional prose polish only</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;"><code>STATUS</code></td>
+            <td>"What is the reconciliation status of PAY109?"</td>
+            <td>Never</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;"><code>WHY</code></td>
+            <td>"Why is PAY109 matched?"</td>
+            <td>Optional prose polish only</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;"><code>EVIDENCE</code></td>
+            <td>"What evidence supports PAY109?"</td>
+            <td>Optional prose polish only</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;"><code>FILTER_STATUS</code></td>
+            <td>"Which transactions need human review?" / "Show unresolved"</td>
+            <td>Never</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;"><code>FILTER_RULE</code></td>
+            <td>"Which transactions used the split settlement rule?"</td>
+            <td>Never</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px; border-bottom:none;"><code>UNSUPPORTED</code></td>
+            <td>"Re-reconcile everything." / "What's the weather?"</td>
+            <td>Never (explicit refusal)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PAY109 demo -->
+  <div class="section">
+    <div class="section-title">Live Q&amp;A output — PAY109</div>
+    <div class="qa-demo">
+
+      <div class="qa-exchange">
+        <div class="qa-q">What happened to PAY109?</div>
+        <div class="qa-meta">
+          <span class="chip tier">TIER_3</span>
+          <span class="chip match">MATCH</span>
+          <span class="chip rule">LLM-assisted split settlement</span>
+        </div>
+        <div class="qa-a">Transaction: PAY109
+Resolved at: TIER_3
+Status:      MATCH
+Rule:        LLM-assisted split settlement
+Reason:      LLM_RECOMMENDATION_VALIDATED
+Matched records: gateway=G113, bank=B107,B108, ledger=L114
+Evidence: gateway_amount=6400.0; bank_credit_total=6395.5; bank_row_ids=['B107', 'B108']
+LLM consulted: yes (split-settlement adjudication)</div>
+      </div>
+
+      <div class="qa-exchange">
+        <div class="qa-q">Why is PAY109 matched?</div>
+        <div class="qa-meta">
+          <span class="chip tier">WHY</span>
+          <span class="chip match">MATCH</span>
+        </div>
+        <div class="qa-a">PAY109 was matched via rule: LLM-assisted split settlement.
+Evidence: gateway_amount=6400.0; bank_credit_total=6395.5; bank_row_ids=['B107', 'B108'].
+Gemini was consulted to identify the split-settlement combination;
+the arithmetic was independently validated in Python.</div>
+      </div>
+
+      <div class="qa-exchange">
+        <div class="qa-q">What evidence supports PAY109?</div>
+        <div class="qa-meta">
+          <span class="chip tier">EVIDENCE</span>
+          <span class="chip rule">LLM-assisted split settlement</span>
+        </div>
+        <div class="qa-a">Evidence for PAY109 (rule: LLM-assisted split settlement):
+  gateway_amount: 6400.0
+  bank_credit_total: 6395.5
+  bank_row_ids: ['B107', 'B108']
+Matched source rows:
+  gateway: G113
+  bank: B107,B108
+  ledger: L114
+LLM recommendation (for audit): decision=MATCH, bank_row_ids=['B107', 'B108']</div>
+      </div>
+
+      <div class="qa-exchange">
+        <div class="qa-q">What is the reconciliation status of PAY109?</div>
+        <div class="qa-meta">
+          <span class="chip tier">STATUS</span>
+          <span class="chip match">MATCH</span>
+        </div>
+        <div class="qa-a">Status of PAY109: MATCH (resolved at TIER_3)
+Rule: LLM-assisted split settlement
+Reason: LLM_RECOMMENDATION_VALIDATED</div>
+      </div>
+
+      <div class="qa-exchange">
+        <div class="qa-q">Which transactions need human review?</div>
+        <div class="qa-meta">
+          <span class="chip tier">FILTER_STATUS</span>
+          <span class="chip review">HUMAN_REVIEW</span>
+        </div>
+        <div class="qa-a">5 transaction(s) with status HUMAN_REVIEW:
+  PAY091
+  PAY092
+  PAY093
+  PAY108
+  PAY110</div>
+      </div>
+
+      <div class="qa-exchange">
+        <div class="qa-q">Show me unresolved transactions.</div>
+        <div class="qa-meta">
+          <span class="chip tier">FILTER_STATUS</span>
+          <span class="chip unresolved">UNRESOLVED</span>
+        </div>
+        <div class="qa-a">8 transaction(s) with status UNRESOLVED:
+  PAY094-REFUND
+  PAY095-REFUND
+  PAY096-REFUND
+  PAY097-REFUND
+  PAY103
+  PAY104
+  PAY105
+  PAY107B</div>
+      </div>
+
+      <div class="qa-exchange">
+        <div class="qa-q">Which transactions were matched by the LLM-assisted split settlement rule?</div>
+        <div class="qa-meta">
+          <span class="chip tier">FILTER_RULE</span>
+          <span class="chip rule">RULE_SPLIT_SETTLEMENT_SUM</span>
+        </div>
+        <div class="qa-a">1 transaction(s) matched via rule 'LLM-assisted split settlement':
+  PAY109</div>
+      </div>
+
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Test coverage -->
+  <div class="section">
+    <div class="section-title">Test coverage — 12 groups, 77 tests</div>
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table class="test-table" style="margin:0;">
+        <thead>
+          <tr>
+            <th style="padding:10px 12px 8px 18px;">Group</th>
+            <th style="padding:10px 12px 8px 0;">Tests</th>
+            <th style="padding:10px 12px 8px 0;">What it verifies</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Transaction lookup</td>
+            <td class="test-count">6</td>
+            <td><code>found=True</code>, status in data, case-insensitive ID, Tier 1 transactions</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Status questions</td>
+            <td class="test-count">5</td>
+            <td>MATCH / HUMAN_REVIEW / UNRESOLVED, tier shown, no LLM call</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Evidence questions</td>
+            <td class="test-count">6</td>
+            <td>Amounts, rule named, refund/TDS linkage, source row IDs</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Human-review filtering</td>
+            <td class="test-count">4 + 3 subtests</td>
+            <td>All returned IDs have correct status, count in explanation, phrasing variants</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Unresolved filtering</td>
+            <td class="test-count">4</td>
+            <td>Results present, PAY105 included, status correctness</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">LLM rule filtering</td>
+            <td class="test-count">5</td>
+            <td>PAY109 in split-settlement list, refund/TDS rules, no LLM call</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Unknown transaction</td>
+            <td class="test-count">5</td>
+            <td><code>found=False</code>, empty data, "not found" in explanation</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Unsupported question</td>
+            <td class="test-count">6</td>
+            <td>Off-topic, re-reconcile, empty string, modification requests rejected</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Malformed question</td>
+            <td class="test-count">5</td>
+            <td>No crash on partial ID, gibberish, multiple IDs, 1000-word repeat</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">No hallucination</td>
+            <td class="test-count">5 + 4 subtests</td>
+            <td>Invented ID → not found; evidence == pipeline evidence; filter IDs all exist</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px;">Gemini unavailable fallback</td>
+            <td class="test-count">5 + 3 subtests</td>
+            <td>Template fallback, <code>llm_unavailable=True</code>, filter never uses LLM, no-key init</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 12px 7px 18px; border-bottom:none;">Read-only safety</td>
+            <td class="test-count">5</td>
+            <td>Tier 1/2/3 dicts unchanged after any ask, repeated asks identical, index init doesn't mutate</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Safety constraints -->
+  <div class="section">
+    <div class="section-title">Safety constraints enforced</div>
+    <div class="constraint-grid">
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">No second reconciliation engine — Q&amp;A only reads existing Tier 1/2/3 results</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">Deterministic retrieval first — Gemini is optional prose polish, never a decision-maker</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">Gemini only receives the retrieved slice for one question — never the full dataset</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">Missing transaction → "not found", never invented evidence or status</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">Results are never mutated — index stores serialised dicts, not live objects</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">MATCHED / HUMAN_REVIEW / UNRESOLVED labels preserved exactly from pipeline</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">Gemini unavailable → template explanation returned, <code>llm_unavailable=True</code>, no crash</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">Filter questions (FILTER_STATUS, FILTER_RULE) never consult Gemini</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">API key read only from <code>os.environ</code>, same as Tier 3 — never hardcoded</div>
+      </div>
+      <div class="constraint-item">
+        <div class="icon-c">✓</div>
+        <div class="text">Unsupported questions return explicit refusal with supported scope listed</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Usage -->
+  <div class="section">
+    <div class="section-title">Usage example</div>
+    <div class="card">
+      <pre style="margin:0; overflow-x:auto; background:var(--mono-bg); padding:14px 16px; border-radius:6px; line-height:1.65; color:var(--text);">from core.match_exact import run_tier1, get_residue
+from core.match_fuzzy import run_tier2
+from core.match_llm   import run_tier3, GeminiLLMClient
+from core.qa_agent    import build_qa_agent
+
+r1, _, matcher = run_tier1(data_dir=<span style="color:var(--green)">"data"</span>, return_matcher=True)
+r2, _          = run_tier2(get_residue(r1), matcher)
+r3, _          = run_tier3(r2, matcher, llm_client=GeminiLLMClient())
+
+agent  = build_qa_agent(r1, r2, r3)
+answer = agent.ask(<span style="color:var(--green)">"What happened to PAY109?"</span>)
+
+print(answer.explanation)
+<span style="color:var(--text-3)"># answer.found, .supported, .llm_used, .llm_unavailable, .retrieved_data also available</span></pre>
+    </div>
+  </div>
+
+</div>
