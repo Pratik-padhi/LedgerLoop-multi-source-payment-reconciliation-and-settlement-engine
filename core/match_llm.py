@@ -86,6 +86,7 @@ Tier 3 DOES NOT:
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -96,6 +97,9 @@ from typing import Optional, Protocol
 from core.match_exact import ExactMatcher, Tier1Result
 from core.match_fuzzy import Tier2Result, get_tier2_residue
 from core.normalize import CanonicalRecord
+
+
+logger = logging.getLogger(__name__)
 
 
 # ===========================================================================
@@ -213,6 +217,7 @@ class GeminiLLMClient:
     def complete(self, system: str, user: str) -> str:
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
+            logger.warning("Gemini API unavailable: category=missing_api_key")
             raise LLMUnavailableError("GEMINI_API_KEY is not set")
 
         import urllib.request
@@ -259,8 +264,19 @@ class GeminiLLMClient:
                 body = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             error_body = e.read().decode("utf-8", errors="replace")
+            logger.warning(
+                "Gemini API unavailable: category=http_error http_status=%s",
+                e.code,
+            )
             raise LLMUnavailableError(f"Gemini API HTTP {e.code}: {error_body[:500]}") from e
-        except (urllib.error.URLError, TimeoutError) as e:
+        except urllib.error.URLError as e:
+            logger.warning(
+                "Gemini API unavailable: category=url_error reason_type=%s",
+                type(e.reason).__name__,
+            )
+            raise LLMUnavailableError(f"Gemini API call failed: {e}") from e
+        except TimeoutError as e:
+            logger.warning("Gemini API unavailable: category=timeout")
             raise LLMUnavailableError(f"Gemini API call failed: {e}") from e
 
         try:
@@ -268,6 +284,7 @@ class GeminiLLMClient:
             parts = candidates[0]["content"]["parts"]
             return "".join(p.get("text", "") for p in parts)
         except (IndexError, KeyError, TypeError) as e:
+            logger.warning("Gemini API unavailable: category=invalid_response_shape")
             raise LLMUnavailableError(f"Gemini API returned an unexpected shape: {e}") from e
 
 

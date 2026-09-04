@@ -1,6 +1,8 @@
 import json
+import io
 import os
 import unittest
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 from core.match_llm import GeminiLLMClient, LLMUnavailableError
@@ -13,8 +15,63 @@ class TestGeminiLLMClient(unittest.TestCase):
     def test_missing_api_key_raises_without_network_call(self):
         with patch.dict(os.environ, {}, clear=True):
             client = GeminiLLMClient()
-            with self.assertRaises(LLMUnavailableError):
-                client.complete("system", "user")
+            with self.assertLogs("core.match_llm", level="WARNING") as logs:
+                with self.assertRaises(LLMUnavailableError):
+                    client.complete("system", "user")
+            self.assertIn("category=missing_api_key", logs.output[0])
+
+    @patch("urllib.request.urlopen")
+    def test_http_failure_logs_status_without_sensitive_data(self, mock_urlopen):
+        secret = "test-api-key"
+        system = "system instruction with PAY109"
+        user = "user payload with B109"
+        mock_urlopen.side_effect = urllib.error.HTTPError(
+            "https://example.test", 429, "Too Many Requests", {},
+            io.BytesIO(b'{"error":"secret provider details"}'),
+        )
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": secret}):
+            with self.assertLogs("core.match_llm", level="WARNING") as logs:
+                with self.assertRaises(LLMUnavailableError):
+                    GeminiLLMClient().complete(system, user)
+
+        diagnostic = "\n".join(logs.output)
+        self.assertIn("category=http_error", diagnostic)
+        self.assertIn("http_status=429", diagnostic)
+        for sensitive_value in (secret, system, user, "secret provider details"):
+            self.assertNotIn(sensitive_value, diagnostic)
+
+    @patch("urllib.request.urlopen")
+    def test_url_failure_logs_sanitized_category(self, mock_urlopen):
+        mock_urlopen.side_effect = urllib.error.URLError("private connection detail")
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}):
+            with self.assertLogs("core.match_llm", level="WARNING") as logs:
+                with self.assertRaises(LLMUnavailableError):
+                    GeminiLLMClient().complete("system PAY109", "user B109")
+
+        diagnostic = "\n".join(logs.output)
+        self.assertIn("category=url_error", diagnostic)
+        self.assertIn("reason_type=str", diagnostic)
+        self.assertNotIn("private connection detail", diagnostic)
+        self.assertNotIn("PAY109", diagnostic)
+        self.assertNotIn("B109", diagnostic)
+
+    @patch("urllib.request.urlopen")
+    def test_invalid_response_logs_category_without_response_body(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"provider_detail": "sensitive"}).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "test-api-key"}):
+            with self.assertLogs("core.match_llm", level="WARNING") as logs:
+                with self.assertRaises(LLMUnavailableError):
+                    GeminiLLMClient().complete("system", "user")
+
+        diagnostic = "\n".join(logs.output)
+        self.assertIn("category=invalid_response_shape", diagnostic)
+        self.assertNotIn("sensitive", diagnostic)
 
     @patch("urllib.request.urlopen")
     def test_successful_response_extracts_content(self, mock_urlopen):
