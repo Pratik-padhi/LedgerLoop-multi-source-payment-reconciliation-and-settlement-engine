@@ -44,6 +44,8 @@ from core.match_llm import (
     run_tier3,
     retry_tier3_transaction,
     GeminiLLMClient,
+    GeminiFallbackClient,
+    LLMAdjudicator,
     STATUS_MATCH,
     STATUS_HUMAN_REVIEW,
     STATUS_UNRESOLVED,
@@ -61,7 +63,10 @@ from core.qa_agent import build_qa_agent
 # Pipeline — run once at module load so the server starts hot
 # ---------------------------------------------------------------------------
 
-_DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+_DATA_DIR = os.environ.get(
+    "LEDGERLOOP_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
+)
 
 
 def _consumed_bank_ids(r1, r2, r3) -> set:
@@ -109,7 +114,7 @@ def _run_pipeline():
     pending_txns = _stage3_pending_txns(r3)
     provider = os.environ.get("LLM_PROVIDER", "").lower()
     stage3_llm = (
-        GeminiLLMClient()
+        GeminiFallbackClient()
         if provider == "gemini" or os.environ.get("GEMINI_API_KEY")
         else None
     )
@@ -288,6 +293,13 @@ def api_overview():
 
     total = len(_index)
 
+    # LLM model chain (built-in defaults + env overrides)
+    _primary = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+    _env_chain = [
+        m.strip() for m in os.environ.get("GEMINI_MODELS", "").split(",") if m.strip()
+    ]
+    llm_models = list(dict.fromkeys([_primary, *_env_chain]))
+
     return jsonify({
         "total_transactions": total,
         "status_counts": status_counts,
@@ -305,6 +317,11 @@ def api_overview():
         "reconciliation_rate": _reconciliation_rate,
         "exception_count": _exception_count,
         "settlement_variance": float(_settlement_variance),
+        "dataset": os.path.basename(os.path.abspath(_DATA_DIR)),
+        "gateway_rows": len(_matcher.gateway_records),
+        "bank_rows": len(_matcher.bank_records),
+        "ledger_rows": len(_matcher.ledger_records),
+        "llm_models": llm_models,
     })
 
 
@@ -337,6 +354,40 @@ def api_exceptions():
                 "llm_consulted": d.get("llm_consulted", False),
             })
     return jsonify({"exceptions": exceptions, "count": len(exceptions)})
+
+
+# ---------------------------------------------------------------------------
+# /api/transactions — read-only summary index for the Transaction Explorer
+# ---------------------------------------------------------------------------
+
+@app.route("/api/transactions")
+def api_transactions():
+    """Read-only index of every transaction result (any tier).
+
+    Derived entirely from the already-computed in-memory ``_index``; never
+    consults ground truth and never mutates any result. Powers the Transaction
+    Explorer (client-side search, filter and sort) and, for STAGE_3 split
+    settlements, carries the settlement breakdown so the UI can show the
+    Expected -> Actual -> Variance relationship directly.
+    """
+    rows = []
+    for tid, entry in sorted(_index.items()):
+        d = entry["data"]
+        gw_id = (d.get("matched_records") or {}).get("gateway")
+        rows.append({
+            "transaction_id": tid,
+            "tier": entry["tier"],
+            "status": d.get("status"),
+            "rule": d.get("rule"),
+            "reason": d.get("reason"),
+            "gateway_row": gw_id,
+            "ledger_row": (d.get("matched_records") or {}).get("ledger"),
+            "bank_row_ids": d.get("bank_row_ids", []),
+            "amount": _gw_amount_by_source.get(gw_id) if gw_id else None,
+            "llm_consulted": bool(d.get("llm_consulted")),
+            "settlement": d.get("settlement"),
+        })
+    return jsonify({"transactions": rows, "count": len(rows)})
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +520,62 @@ def api_retry_stage3(txn_id: str):
     if result.status == SplitStatus.AI_RETRY_REQUIRED:
         return jsonify(response), 503
     return jsonify(response)
+
+
+@app.route("/api/transaction/<txn_id>/ai-review", methods=["POST"])
+def api_ai_review(txn_id: str):
+    """Return a read-only Gemini assessment of the stored transaction context."""
+    txn_id = txn_id.upper()
+    entry = _index.get(txn_id)
+    if entry is None:
+        return jsonify({"error": f"Transaction '{txn_id}' not found"}), 404
+
+    data = entry["data"]
+    context = {
+        "transaction_id": txn_id,
+        "tier": entry["tier"],
+        "status": data.get("status"),
+        "rule": data.get("rule"),
+        "reason": data.get("reason"),
+        "matched_records": data.get("matched_records", {}),
+        "bank_row_ids": data.get("bank_row_ids", []),
+        "evidence": data.get("evidence", {}),
+        "settlement": data.get("settlement"),
+    }
+    system = (
+        "You are a read-only payment reconciliation reviewer. Analyze only the "
+        "provided transaction context. Do not change its status, select new rows, "
+        "or invent financial facts. Respond as JSON with decision, confidence "
+        "(0.0 to 1.0), rationale, evidence, and adjustment."
+    )
+    user = json.dumps({"transaction_context": context}, default=str)
+    try:
+        raw = GeminiFallbackClient(structured=False).complete(system, user)
+        review = LLMAdjudicator._parse_llm_json(raw)
+        confidence = review.get("confidence") if isinstance(review, dict) else None
+        if (
+            not isinstance(review, dict)
+            or isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not 0.0 <= confidence <= 1.0
+            or not isinstance(review.get("rationale"), str)
+            or not isinstance(review.get("evidence", {}), dict)
+            or not isinstance(review.get("adjustment", {}), dict)
+        ):
+            return jsonify({"error": "Gemini returned an invalid AI review", "transaction_id": txn_id}), 422
+    except Exception as error:
+        return jsonify({
+            "error": "Gemini unavailable for AI review",
+            "transaction_id": txn_id,
+            "retryable": True,
+        }), 503
+
+    return jsonify({
+        "transaction_id": txn_id,
+        "review": review,
+        "source_status": data.get("status"),
+        "source_tier": entry["tier"],
+    })
 
 
 # ---------------------------------------------------------------------------
