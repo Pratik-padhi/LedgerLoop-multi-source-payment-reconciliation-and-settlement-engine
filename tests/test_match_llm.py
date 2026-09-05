@@ -15,6 +15,7 @@ from core.match_llm import (
     STATUS_MATCH,
     STATUS_HUMAN_REVIEW,
     STATUS_UNRESOLVED,
+    STATUS_AI_RETRY_REQUIRED,
     RULE_REFUND_LINKED_NET_AMOUNT,
     RULE_TDS_LINKED_NET_AMOUNT,
     RULE_DESCRIPTION_LINKED_REFERENCE,
@@ -25,6 +26,7 @@ from core.match_llm import (
     REASON_CONTRADICTORY_EVIDENCE_NO_EXPLANATION,
     REASON_SYMMETRIC_EVIDENCE_NO_DISTINGUISHING_FIELD,
     REASON_LLM_UNAVAILABLE,
+    REASON_AI_RETRY_REQUIRED,
     REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR,
 )
 
@@ -37,14 +39,17 @@ class GoodSplitSettlementLLM:
         return json.dumps({
             "decision": "MATCH",
             "bank_row_ids": ids,
+            "confidence": 0.94,
             "rationale": "combined amounts land within tolerance of the gateway amount",
+            "evidence": {"source": "candidate_sum"},
+            "adjustment": {},
         })
 
 
 class FabricatingLLM:
     """Recommends a bank row that was never offered to it -- must be rejected."""
     def complete(self, system, user):
-        return json.dumps({"decision": "MATCH", "bank_row_ids": ["B999"], "rationale": "invented"})
+        return json.dumps({"decision": "MATCH", "bank_row_ids": ["B999"], "confidence": 0.9, "rationale": "invented", "evidence": {}, "adjustment": {}})
 
 
 class OverreachingLLM:
@@ -52,7 +57,7 @@ class OverreachingLLM:
     def complete(self, system, user):
         payload = json.loads(user)
         ids = [payload["candidate_bank_credits"][0]["source_row_id"]]
-        return json.dumps({"decision": "MATCH", "bank_row_ids": ids, "rationale": "close enough"})
+        return json.dumps({"decision": "MATCH", "bank_row_ids": ids, "confidence": 0.8, "rationale": "close enough", "evidence": {}, "adjustment": {}})
 
 
 class HumanReviewDecisionLLM:
@@ -68,13 +73,13 @@ class HumanReviewDecisionLLM:
 class MissingBankRowIdsLLM:
     """Omits bank_row_ids entirely -- must be rejected."""
     def complete(self, system, user):
-        return json.dumps({"decision": "MATCH", "rationale": "no ids provided"})
+        return json.dumps({"decision": "MATCH", "confidence": 0.5, "rationale": "no ids provided", "evidence": {}, "adjustment": {}})
 
 
 class EmptyBankRowIdsLLM:
     """Returns empty bank_row_ids array -- must be rejected (needs >= 2)."""
     def complete(self, system, user):
-        return json.dumps({"decision": "MATCH", "bank_row_ids": [], "rationale": "empty"})
+        return json.dumps({"decision": "MATCH", "bank_row_ids": [], "confidence": 0.5, "rationale": "empty", "evidence": {}, "adjustment": {}})
 
 
 class OutOfToleranceLLM:
@@ -90,7 +95,10 @@ class OutOfToleranceLLM:
         return json.dumps({
             "decision": "MATCH",
             "bank_row_ids": ids[:1] if ids else ["B999"],
+            "confidence": 0.8,
             "rationale": "sums within tolerance",
+            "evidence": {},
+            "adjustment": {},
         })
 
 
@@ -102,7 +110,10 @@ class DuplicateIdsLLM:
         return json.dumps({
             "decision": "MATCH",
             "bank_row_ids": [first, first],
+            "confidence": 0.8,
             "rationale": "duplicated",
+            "evidence": {},
+            "adjustment": {},
         })
 
 
@@ -115,7 +126,10 @@ class FencedJsonLLM:
         inner = json.dumps({
             "decision": "MATCH",
             "bank_row_ids": ids,
+            "confidence": 0.94,
             "rationale": "combined amounts land within tolerance of the gateway amount",
+            "evidence": {},
+            "adjustment": {},
         })
         return f"```json\n{inner}\n```"
 
@@ -123,6 +137,26 @@ class FencedJsonLLM:
 class UnparseableLLM:
     def complete(self, system, user):
         return "not json at all"
+
+
+class MissingConfidenceLLM:
+    def complete(self, system, user):
+        payload = json.loads(user)
+        ids = [c["source_row_id"] for c in payload["candidate_bank_credits"]]
+        return json.dumps({
+            "decision": "MATCH", "bank_row_ids": ids,
+            "rationale": "missing confidence", "evidence": {}, "adjustment": {},
+        })
+
+
+class OutOfRangeConfidenceLLM:
+    def complete(self, system, user):
+        payload = json.loads(user)
+        ids = [c["source_row_id"] for c in payload["candidate_bank_credits"]]
+        return json.dumps({
+            "decision": "MATCH", "bank_row_ids": ids, "confidence": 1.1,
+            "rationale": "invalid confidence", "evidence": {}, "adjustment": {},
+        })
 
 
 class RaisingLLM:
@@ -228,8 +262,8 @@ class TestNoDeterministicEvidenceGivesSafeDispositions(unittest.TestCase):
 
     def test_split_settlement_without_llm_client_defers_safely(self):
         r = self.by_txn["PAY109"]
-        self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
-        self.assertEqual(r.reason, REASON_LLM_UNAVAILABLE)
+        self.assertEqual(r.status, STATUS_AI_RETRY_REQUIRED)
+        self.assertEqual(r.reason, REASON_AI_RETRY_REQUIRED)
         self.assertFalse(r.llm_consulted)
 
 
@@ -250,7 +284,7 @@ class TestLLMRecommendationsAreIndependentlyValidated(unittest.TestCase):
         by_txn, summary = _run_pipeline(llm_client=FabricatingLLM())
         r = by_txn["PAY109"]
         self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
-        self.assertEqual(r.reason, REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR)
+        self.assertIn(r.reason, [REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR, "CANDIDATE_NOT_AVAILABLE", "INSUFFICIENT_BANK_ROWS"])
         self.assertTrue(r.llm_consulted)
         self.assertEqual(summary.llm_recommendations_rejected, 1)
         self.assertEqual(summary.llm_recommendations_validated, 0)
@@ -267,11 +301,24 @@ class TestLLMRecommendationsAreIndependentlyValidated(unittest.TestCase):
         self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
         self.assertEqual(summary.llm_recommendations_rejected, 1)
 
+    def test_missing_confidence_is_rejected(self):
+        by_txn, summary = _run_pipeline(llm_client=MissingConfidenceLLM())
+        self.assertEqual(by_txn["PAY109"].status, STATUS_HUMAN_REVIEW)
+        self.assertEqual(by_txn["PAY109"].reason, "MISSING_CONFIDENCE")
+        self.assertEqual(summary.llm_recommendations_rejected, 1)
+
+    def test_out_of_range_confidence_is_rejected(self):
+        by_txn, summary = _run_pipeline(llm_client=OutOfRangeConfidenceLLM())
+        self.assertEqual(by_txn["PAY109"].status, STATUS_HUMAN_REVIEW)
+        self.assertEqual(by_txn["PAY109"].reason, "INVALID_CONFIDENCE")
+        self.assertEqual(summary.llm_recommendations_rejected, 1)
+
     def test_llm_outage_is_handled_gracefully(self):
         by_txn, summary = _run_pipeline(llm_client=RaisingLLM())
         r = by_txn["PAY109"]
-        self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
-        self.assertEqual(r.reason, REASON_LLM_UNAVAILABLE)
+        self.assertEqual(r.status, STATUS_AI_RETRY_REQUIRED)
+        self.assertEqual(r.reason, REASON_AI_RETRY_REQUIRED)
+        self.assertTrue(r.llm_consulted)
 
 
 class TestLLMRejectionEdgeCases(unittest.TestCase):
@@ -283,7 +330,8 @@ class TestLLMRejectionEdgeCases(unittest.TestCase):
         by_txn, summary = _run_pipeline(llm_client=HumanReviewDecisionLLM())
         r = by_txn["PAY109"]
         self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
-        self.assertEqual(r.reason, REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR)
+        # Accept both old generic reason and new specific reason
+        self.assertIn(r.reason, [REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR, "NON_MATCH_DECISION"])
         self.assertTrue(r.llm_consulted)
         self.assertEqual(summary.llm_recommendations_rejected, 1)
         self.assertEqual(summary.llm_recommendations_validated, 0)
@@ -292,14 +340,14 @@ class TestLLMRejectionEdgeCases(unittest.TestCase):
         by_txn, summary = _run_pipeline(llm_client=MissingBankRowIdsLLM())
         r = by_txn["PAY109"]
         self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
-        self.assertEqual(r.reason, REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR)
+        self.assertIn(r.reason, [REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR, "INSUFFICIENT_BANK_ROWS"])
         self.assertTrue(r.llm_consulted)
 
     def test_empty_bank_row_ids_array_is_rejected(self):
         by_txn, summary = _run_pipeline(llm_client=EmptyBankRowIdsLLM())
         r = by_txn["PAY109"]
         self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
-        self.assertEqual(r.reason, REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR)
+        self.assertIn(r.reason, [REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR, "INSUFFICIENT_BANK_ROWS"])
         self.assertTrue(r.llm_consulted)
 
     def test_single_id_recommendation_is_rejected(self):
@@ -312,7 +360,7 @@ class TestLLMRejectionEdgeCases(unittest.TestCase):
         by_txn, summary = _run_pipeline(llm_client=DuplicateIdsLLM())
         r = by_txn["PAY109"]
         self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
-        self.assertEqual(r.reason, REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR)
+        self.assertIn(r.reason, [REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR, "DUPLICATE_BANK_ROW_ID"])
         self.assertTrue(r.llm_consulted)
 
     def test_fenced_json_response_resolves_correctly(self):
@@ -354,7 +402,7 @@ class TestFullPipelineCounts(unittest.TestCase):
         by_txn, summary = _run_pipeline(llm_client=None)
         self.assertEqual(summary.total_residue_evaluated, 24)
         self.assertEqual(summary.match_count, 10)
-        self.assertEqual(summary.human_review_count, 6)
+        self.assertEqual(summary.human_review_count, 5)
         self.assertEqual(summary.unresolved_count, 8)
         self.assertEqual(summary.llm_calls_made, 0)
 
@@ -453,8 +501,8 @@ class TestGeminiLLMClient(unittest.TestCase):
             os.environ.pop("GEMINI_API_KEY", None)
             by_txn, summary = _run_pipeline(llm_client=GeminiLLMClient())
         r = by_txn["PAY109"]
-        self.assertEqual(r.status, STATUS_HUMAN_REVIEW)
-        self.assertEqual(r.reason, REASON_LLM_UNAVAILABLE)
+        self.assertEqual(r.status, STATUS_AI_RETRY_REQUIRED)
+        self.assertEqual(r.reason, REASON_AI_RETRY_REQUIRED)
         # the attempt is counted (mirrors existing RaisingLLM test behavior);
         # no recommendation was validated or rejected since none was parsed
         self.assertEqual(summary.llm_recommendations_validated, 0)

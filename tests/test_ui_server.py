@@ -15,11 +15,32 @@ import json
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import app as server_module
 from app import app
+
+
+class RetryUnavailableLLM:
+    def complete(self, system, user):
+        from core.match_llm import LLMUnavailableError
+        raise LLMUnavailableError("simulated outage")
+
+
+class RetrySuccessLLM:
+    def complete(self, system, user):
+        payload = json.loads(user)
+        ids = [c["source_row_id"] for c in payload["candidate_bank_credits"]]
+        return json.dumps({
+            "decision": "MATCH",
+            "bank_row_ids": ids,
+            "confidence": 0.91,
+            "rationale": "candidate credits reconcile the settlement",
+            "evidence": {"source": "candidate_sum"},
+            "adjustment": {},
+        })
 
 
 class TestOverviewEndpoint(unittest.TestCase):
@@ -103,7 +124,7 @@ class TestExceptionsEndpoint(unittest.TestCase):
         d = r.get_json()
         for exc in d["exceptions"]:
             self.assertIn(
-                exc["status"], ("HUMAN_REVIEW", "UNRESOLVED"),
+                exc["status"], ("HUMAN_REVIEW", "UNRESOLVED", "AI_RETRY_REQUIRED"),
                 f"{exc['transaction_id']} has unexpected status {exc['status']}"
             )
 
@@ -161,7 +182,7 @@ class TestTransactionEndpoint(unittest.TestCase):
 
     def test_pay109_is_tier3(self):
         """PAY109 is the canonical Tier 3 split-settlement case.
-        In offline/no-LLM-key mode it lands at HUMAN_REVIEW; with a valid
+        In offline/no-LLM-key mode it lands at AI_RETRY_REQUIRED; with a valid
         Gemini key it would be MATCH. The test checks tier + that the result
         comes from the live pipeline, not a hardcoded fixture.
         """
@@ -169,7 +190,7 @@ class TestTransactionEndpoint(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         d = r.get_json()
         self.assertEqual(d["tier"], "TIER_3")
-        self.assertIn(d["status"], ("MATCH", "HUMAN_REVIEW"))
+        self.assertIn(d["status"], ("MATCH", "HUMAN_REVIEW", "AI_RETRY_REQUIRED"))
 
     def test_pay109_data_not_hardcoded(self):
         """PAY109 result comes from the live pipeline, not a fixture.
@@ -191,6 +212,52 @@ class TestTransactionEndpoint(unittest.TestCase):
         # Spot-check: PAY109 should be in the MATCH bucket
         r = self.client.get("/api/transaction/PAY109").get_json()
         self.assertIn(r["status"], sc)
+
+
+class TestRetryEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+        self.original_index_entry = server_module._index["PAY109"]
+        self.r3_index = next(i for i, result in enumerate(server_module._r3)
+                             if result.transaction_id == "PAY109")
+        self.original_r3 = server_module._r3[self.r3_index]
+        self.original_qa_agent = server_module._qa_agent
+        server_module._index["PAY109"] = {
+            "tier": "TIER_3",
+            "data": {**self.original_index_entry["data"],
+                     "status": "AI_RETRY_REQUIRED",
+                     "reason": "AI_RETRY_REQUIRED"},
+        }
+
+    def tearDown(self):
+        server_module._index["PAY109"] = self.original_index_entry
+        server_module._r3[self.r3_index] = self.original_r3
+        server_module._qa_agent = self.original_qa_agent
+
+    def test_retry_unavailable_remains_retryable(self):
+        with patch.object(server_module, "GeminiLLMClient", return_value=RetryUnavailableLLM()):
+            response = self.client.post("/api/transaction/PAY109/retry-llm")
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["status"], "AI_RETRY_REQUIRED")
+
+    def test_retry_success_returns_validated_adjudication(self):
+        with patch.object(server_module, "GeminiLLMClient", return_value=RetrySuccessLLM()):
+            response = self.client.post(
+                "/api/transaction/PAY109/retry-llm",
+                json={"bank_row_ids": ["B999"], "amount": 1},
+            )
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["status"], "MATCH")
+        self.assertEqual(data["confidence"], 0.91)
+        self.assertEqual(data["evidence"]["llm_evidence"]["source"], "candidate_sum")
+
+    def test_retry_rejects_non_retryable_transaction(self):
+        server_module._index["PAY109"]["data"]["status"] = "HUMAN_REVIEW"
+        response = self.client.post("/api/transaction/PAY109/retry-llm")
+        self.assertEqual(response.status_code, 409)
 
 
 class TestQAEndpoint(unittest.TestCase):

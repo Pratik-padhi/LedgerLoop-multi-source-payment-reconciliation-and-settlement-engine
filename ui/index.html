@@ -736,6 +736,17 @@ code, pre, .mono { font-family: var(--font-mono); }
   border-radius: 4px;
   display: inline-block;
 }
+.retry-btn {
+  margin-left: auto;
+  padding: 7px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.retry-btn:disabled { opacity: .55; cursor: default; }
 
 /* ─── Evidence Block ─────────────────────────────────────── */
 .evidence-block {
@@ -1058,7 +1069,7 @@ function esc(s) {
 function chip(status) {
   const m = {
     MATCH: "match", MATCHED: "match", PARTIAL_MATCH: "match",
-    HUMAN_REVIEW: "review",
+    HUMAN_REVIEW: "review", AI_RETRY_REQUIRED: "review",
     UNRESOLVED: "unresolved", UNRESOLVED_FOR_TIER_1: "unresolved"
   };
   const c = m[status] || "neutral";
@@ -1412,8 +1423,37 @@ async function loadDetail(tid) {
       return;
     }
     box.innerHTML = renderDetail(await res.json());
+    const retry = box.querySelector("[data-retry-llm]");
+    if (retry) {
+      retry.addEventListener("click", () => retryGemini(tid, retry));
+    }
   } catch (err) {
     box.innerHTML = `<div class="empty-msg">${esc(err.message)}</div>`;
+  }
+}
+
+async function retryGemini(tid, button) {
+  button.disabled = true;
+  button.textContent = "Retrying Gemini...";
+  try {
+    const res = await fetch(API + "/api/transaction/" + encodeURIComponent(tid) + "/retry-llm", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+    });
+    const data = await res.json();
+    if (res.status === 503) {
+      document.getElementById("exc-detail").innerHTML = renderDetail(data);
+      const retry = document.querySelector("[data-retry-llm]");
+      if (retry) retry.addEventListener("click", () => retryGemini(tid, retry));
+      return;
+    }
+    if (!res.ok) throw new Error(data.error || "Retry failed");
+    _exceptions = null;
+    await loadExceptions();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "Retry Gemini";
+    window.alert(err.message);
   }
 }
 
@@ -1430,6 +1470,7 @@ function renderDetail(d) {
     const rec = d.llm_recommendation;
     llmBlock = `
       <div class="detail-field"><div class="df-label">LLM Consulted</div><div class="df-value">${llmChip(d.llm_consulted)}</div></div>
+      ${d.confidence !== null && d.confidence !== undefined ? `<div class="detail-field"><div class="df-label">Confidence</div><div class="df-value">${esc(d.confidence)}</div></div>` : ""}
       ${rec ? `<div class="detail-field"><div class="df-label">LLM Recommendation</div>
         <div class="df-value mono">${esc(rec.decision || "—")} — bank IDs: ${esc(JSON.stringify(rec.bank_row_ids || []))}</div>
       </div>` : ""}`;
@@ -1440,6 +1481,7 @@ function renderDetail(d) {
       <div class="detail-head">
         <span class="detail-tid">${esc(d.transaction_id)}</span>
         ${chip(d.status)} ${tierChip(d.tier)}
+        ${d.status === "AI_RETRY_REQUIRED" ? '<button class="retry-btn" data-retry-llm>Retry Gemini</button>' : ""}
       </div>
       <div class="detail-body">
         <div class="detail-grid">

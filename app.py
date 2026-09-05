@@ -42,10 +42,12 @@ from core.match_exact import run_tier1, get_residue
 from core.match_fuzzy import run_tier2
 from core.match_llm import (
     run_tier3,
+    retry_tier3_transaction,
     GeminiLLMClient,
     STATUS_MATCH,
     STATUS_HUMAN_REVIEW,
     STATUS_UNRESOLVED,
+    STATUS_AI_RETRY_REQUIRED,
 )
 from core.qa_agent import build_qa_agent
 
@@ -188,7 +190,7 @@ def api_exceptions():
     for tid, entry in sorted(_index.items()):
         d = entry["data"]
         status = d.get("status", "UNKNOWN")
-        if status in (STATUS_HUMAN_REVIEW, STATUS_UNRESOLVED):
+        if status in (STATUS_HUMAN_REVIEW, STATUS_UNRESOLVED, STATUS_AI_RETRY_REQUIRED):
             exceptions.append({
                 "transaction_id": tid,
                 "tier": entry["tier"],
@@ -217,6 +219,45 @@ def api_transaction(txn_id: str):
         "tier": entry["tier"],
         **entry["data"],
     })
+
+
+@app.route("/api/transaction/<txn_id>/retry-llm", methods=["POST"])
+def api_retry_llm(txn_id: str):
+    """Retry Gemini for one existing AI-retry transaction only."""
+    global _qa_agent
+
+    txn_id = txn_id.upper()
+    entry = _index.get(txn_id)
+    if entry is None:
+        return jsonify({"error": f"Transaction '{txn_id}' not found"}), 404
+    if entry["data"].get("status") != STATUS_AI_RETRY_REQUIRED:
+        return jsonify({
+            "error": "Only AI_RETRY_REQUIRED transactions can be retried",
+            "transaction_id": txn_id,
+            "status": entry["data"].get("status"),
+        }), 409
+
+    result = retry_tier3_transaction(
+        txn_id,
+        _r2,
+        _matcher,
+        GeminiLLMClient(),
+    )
+    result_data = result.to_dict()
+    for index, previous in enumerate(_r3):
+        if previous.transaction_id == txn_id:
+            _r3[index] = result
+            break
+    _index[txn_id] = {"tier": "TIER_3", "data": result_data}
+    _qa_agent = build_qa_agent(
+        _r1, _r2, _r3,
+        use_llm_for_explanations=False,
+    )
+
+    response = {"transaction_id": txn_id, "tier": "TIER_3", **result_data}
+    if result.status == STATUS_AI_RETRY_REQUIRED:
+        return jsonify(response), 503
+    return jsonify(response)
 
 
 # ---------------------------------------------------------------------------

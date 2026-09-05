@@ -109,11 +109,14 @@ logger = logging.getLogger(__name__)
 STATUS_MATCH = "MATCH"
 STATUS_HUMAN_REVIEW = "HUMAN_REVIEW"
 STATUS_UNRESOLVED = "UNRESOLVED"
+STATUS_AI_RETRY_REQUIRED = "AI_RETRY_REQUIRED"
 
 RULE_REFUND_LINKED_NET_AMOUNT = "REFUND_LINKED_NET_AMOUNT"
 RULE_TDS_LINKED_NET_AMOUNT = "TDS_LINKED_NET_AMOUNT"
 RULE_DESCRIPTION_LINKED_REFERENCE = "DESCRIPTION_LINKED_REFERENCE"
 RULE_SPLIT_SETTLEMENT_SUM = "SPLIT_SETTLEMENT_SUM"
+RULE_GST_DECOMPOSITION = "GST_DECOMPOSITION"
+RULE_MDR_FEE_DEDUCTION = "MDR_FEE_DEDUCTION"
 
 REASON_NO_EVIDENCE_AVAILABLE = "NO_EVIDENCE_AVAILABLE"
 REASON_AMBIGUOUS_DUPLICATE_CANDIDATES = "AMBIGUOUS_DUPLICATE_CANDIDATES"
@@ -128,7 +131,13 @@ REASON_TIER2_AMBIGUITY_PRESERVED = "TIER2_AMBIGUITY_PRESERVED"
 REASON_LLM_RECOMMENDATION_VALIDATED = "LLM_RECOMMENDATION_VALIDATED"
 REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR = "LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR"
 REASON_LLM_UNAVAILABLE = "LLM_UNAVAILABLE"
+REASON_AI_RETRY_REQUIRED = "AI_RETRY_REQUIRED"
+REASON_MISSING_CONFIDENCE = "MISSING_CONFIDENCE"
+REASON_INVALID_CONFIDENCE = "INVALID_CONFIDENCE"
+REASON_INVALID_STRUCTURED_FIELD = "INVALID_STRUCTURED_FIELD"
 REASON_UNCLASSIFIED_RESIDUE = "UNCLASSIFIED_RESIDUE"
+REASON_GST_EXPLAINED_VARIANCE = "GST_EXPLAINED_VARIANCE"
+REASON_MDR_FEE_EXPLAINED_VARIANCE = "MDR_FEE_EXPLAINED_VARIANCE"
 
 # Small, documented epsilon for exact linked-arithmetic checks (refund netting,
 # TDS netting). Phase 2 already rounds every amount to 2 decimals; this just
@@ -160,6 +169,7 @@ class Tier3Result:
     reason: Optional[str] = None
     llm_consulted: bool = False
     llm_recommendation: Optional[dict] = None  # raw recommendation, for audit only
+    confidence: Optional[float] = None
     decision_time: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_dict(self) -> dict:
@@ -240,9 +250,19 @@ class GeminiLLMClient:
                             "type": "ARRAY",
                             "items": {"type": "STRING"},
                         },
+                        "confidence": {
+                            "type": "NUMBER",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                        },
                         "rationale": {"type": "STRING"},
+                        "evidence": {"type": "OBJECT"},
+                        "adjustment": {"type": "OBJECT"},
                     },
-                    "required": ["decision", "bank_row_ids", "rationale"],
+                    "required": [
+                        "decision", "bank_row_ids", "confidence", "rationale",
+                        "evidence", "adjustment",
+                    ],
                 },
             },
         }
@@ -275,9 +295,12 @@ class GeminiLLMClient:
                 type(e.reason).__name__,
             )
             raise LLMUnavailableError(f"Gemini API call failed: {e}") from e
-        except TimeoutError as e:
+        except (TimeoutError, OSError) as e:
             logger.warning("Gemini API unavailable: category=timeout")
             raise LLMUnavailableError(f"Gemini API call failed: {e}") from e
+        except json.JSONDecodeError as e:
+            logger.warning("Gemini API unavailable: category=invalid_json")
+            raise LLMUnavailableError(f"Gemini API returned invalid JSON: {e}") from e
 
         try:
             candidates = body.get("candidates", [])
@@ -425,6 +448,43 @@ class LLMAdjudicator:
                 found.append(bank.source_row_id)
         return found
 
+    def _try_gst_decomposition(self, gw: CanonicalRecord, ledger: CanonicalRecord,
+                                   candidate_bank_ids: list[str]) -> Optional[str]:
+        """Check if gateway amount plus GST equals bank amount."""
+        gst = ledger.tax_fields.get("gst_amount")
+        if not gst or gst.normalized is None or gst.normalized <= 0 or gw.amount.normalized is None:
+            return None
+        expected = Decimal(str(gw.amount.normalized)) + Decimal(str(gst.normalized))
+        for bid in candidate_bank_ids:
+            if not self._is_available(bid):
+                continue
+            bank = self.bank_by_row_id[bid]
+            if _amounts_close(float(expected), bank.amount.normalized):
+                return bid
+        return None
+
+    def _try_mdr_fee_decomposition(self, gw: CanonicalRecord, ledger: CanonicalRecord,
+                                   candidate_bank_ids: list[str]) -> Optional[str]:
+        """Check if gateway amount minus MDR and fees equals bank amount."""
+        mdr = ledger.tax_fields.get("mdr_amount")
+        mdr_gst = ledger.tax_fields.get("mdr_gst")
+        fee = ledger.tax_fields.get("fee_amount")
+        if gw.amount.normalized is None:
+            return None
+        mdr_val = Decimal(str(mdr.normalized)) if mdr and mdr.normalized and mdr.normalized > 0 else Decimal("0")
+        mdr_gst_val = Decimal(str(mdr_gst.normalized)) if mdr_gst and mdr_gst.normalized and mdr_gst.normalized > 0 else Decimal("0")
+        fee_val = Decimal(str(fee.normalized)) if fee and fee.normalized and fee.normalized > 0 else Decimal("0")
+        if mdr_val == 0 and mdr_gst_val == 0 and fee_val == 0:
+            return None
+        expected = Decimal(str(gw.amount.normalized)) - mdr_val - mdr_gst_val - fee_val
+        for bid in candidate_bank_ids:
+            if not self._is_available(bid):
+                continue
+            bank = self.bank_by_row_id[bid]
+            if _amounts_close(float(expected), bank.amount.normalized):
+                return bid
+        return None
+
     def _amount_matching_available_candidates(self, gw: CanonicalRecord) -> list[str]:
         return [
             b.source_row_id for b in self.all_bank_records
@@ -451,15 +511,18 @@ class LLMAdjudicator:
         if len(available) < 2:
             return None, None, REASON_WEAK_EVIDENCE_INSUFFICIENT
 
-        # Deterministic pre-check: does ANY 2-subset sum within tolerance?
+        # Deterministic pre-check: does ANY 2+ subset sum within tolerance?
         # If not, there's nothing for an LLM to validate either — skip the
         # call entirely (never spend a call chasing evidence that can't
         # exist).
         plausible_combos = []
-        for combo in combinations(available, 2):
-            total = sum(Decimal(str(self.bank_by_row_id[b].amount.normalized)) for b in combo)
-            if abs(total - Decimal(str(gw.amount.normalized))) <= SPLIT_SETTLEMENT_TOLERANCE:
-                plausible_combos.append(combo)
+        # Check 2, 3, and 4 row combinations (up to 4 rows)
+        max_combo_size = min(4, len(available))
+        for size in range(2, max_combo_size + 1):
+            for combo in combinations(available, size):
+                total = sum(Decimal(str(self.bank_by_row_id[b].amount.normalized)) for b in combo)
+                if abs(total - Decimal(str(gw.amount.normalized))) <= SPLIT_SETTLEMENT_TOLERANCE:
+                    plausible_combos.append(combo)
 
         if not plausible_combos:
             return None, None, REASON_WEAK_EVIDENCE_INSUFFICIENT
@@ -485,7 +548,9 @@ class LLMAdjudicator:
             "ONLY a JSON object matching this exact schema: "
             '{"decision": "<MATCH|HUMAN_REVIEW|UNRESOLVED>", '
             '"bank_row_ids": ["<source_row_id>", ...], '
-            '"rationale": "<explanation>"}. '
+            '"confidence": <number from 0.0 to 1.0>, '
+            '"rationale": "<explanation>", '
+            '"evidence": {}, "adjustment": {}}. '
             "The decision field MUST be one of: MATCH, HUMAN_REVIEW, "
             "UNRESOLVED. The bank_row_ids field MUST be a JSON array of "
             "strings matching source_row_ids from the candidates provided. "
@@ -507,12 +572,13 @@ class LLMAdjudicator:
             return None, {"decision": "HUMAN_REVIEW", "rationale": "unparseable LLM response"}, \
                 REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR
 
-        validated = self._validate_split_recommendation(recommendation, gw, available)
+        validated, validation_reason = self._validate_split_recommendation(recommendation, gw, available)
         if validated is not None:
             self.llm_validated += 1
             return validated, recommendation, None
         self.llm_rejected += 1
-        return None, recommendation, REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR
+        # Include the specific validation failure reason
+        return None, recommendation, validation_reason or REASON_LLM_RECOMMENDATION_REJECTED_BY_VALIDATOR
 
     @staticmethod
     def _parse_llm_json(raw: str) -> Optional[dict]:
@@ -571,7 +637,7 @@ class LLMAdjudicator:
         return None
 
     def _validate_split_recommendation(self, recommendation: dict, gw: CanonicalRecord,
-                                        available_candidate_ids: list[str]) -> Optional[list[str]]:
+                                        available_candidate_ids: list[str]) -> tuple[Optional[list[str]], Optional[str]]:
         """
         Independently re-derives the split-settlement arithmetic from the
         RAW records. Never trusts the LLM's stated sum, rationale, or
@@ -581,23 +647,42 @@ class LLMAdjudicator:
             (b) is still available (not consumed by an earlier decision)
             (c) sums, together, within SPLIT_SETTLEMENT_TOLERANCE of the
                 gateway amount (recomputed here, not taken from the LLM)
+
+        Returns (validated_ids, rejection_reason). rejection_reason is a
+        categorized validation failure reason for diagnostics.
         """
         if recommendation.get("decision") != "MATCH":
-            return None
+            return None, "NON_MATCH_DECISION"
+        confidence = recommendation.get("confidence")
+        if confidence is None:
+            return None, REASON_MISSING_CONFIDENCE
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+            return None, REASON_INVALID_CONFIDENCE
+        if not 0.0 <= confidence <= 1.0:
+            return None, REASON_INVALID_CONFIDENCE
+        for field_name in ("evidence", "adjustment"):
+            value = recommendation.get(field_name, {})
+            if not isinstance(value, dict):
+                return None, REASON_INVALID_STRUCTURED_FIELD
         ids = recommendation.get("bank_row_ids")
         if not isinstance(ids, list) or len(ids) < 2:
-            return None
+            return None, "INSUFFICIENT_BANK_ROWS"
         if any(not isinstance(i, str) for i in ids):
-            return None
+            return None, "INVALID_BANK_ROW_ID"
         if any(i not in available_candidate_ids for i in ids):
-            return None
+            return None, "CANDIDATE_NOT_AVAILABLE"
         if len(set(ids)) != len(ids):
-            return None
+            return None, "DUPLICATE_BANK_ROW_ID"
+
+        # Check all rows are still available
+        for i in ids:
+            if not self._is_available(i):
+                return None, "CANDIDATE_NO_LONGER_AVAILABLE"
 
         total = sum(Decimal(str(self.bank_by_row_id[i].amount.normalized)) for i in ids)
         if abs(total - Decimal(str(gw.amount.normalized))) > SPLIT_SETTLEMENT_TOLERANCE:
-            return None
-        return ids
+            return None, "SUM_OUTSIDE_TOLERANCE"
+        return ids, None
 
     # -- top-level per-transaction resolution -----------------------------
 
@@ -770,7 +855,41 @@ class LLMAdjudicator:
                 None,
             )
 
-        # Rule 3 (LLM-assisted, independently validated): split settlement.
+        # Rule 3: GST decomposition (gateway + GST = bank)
+        gst_match = self._try_gst_decomposition(gw, ledger, candidate_ids)
+        if gst_match:
+            self._consume(gst_match)
+            gst_amt = ledger.tax_fields["gst_amount"].normalized
+            return self._result(
+                txn_id, STATUS_MATCH, RULE_GST_DECOMPOSITION,
+                {"gateway": gw.source_row_id, "bank": gst_match, "ledger": ledger_id},
+                {"gateway_amount": gw.amount.normalized,
+                 "gst_amount": gst_amt,
+                 "bank_amount": self.bank_by_row_id[gst_match].amount.normalized,
+                 "explanation": "GST decomposition explains variance"},
+                None,
+            )
+
+        # Rule 4: MDR/fee deduction (gateway - MDR - MDR_GST - fee = bank)
+        mdr_match = self._try_mdr_fee_decomposition(gw, ledger, candidate_ids)
+        if mdr_match:
+            self._consume(mdr_match)
+            mdr_amt = ledger.tax_fields.get("mdr_amount")
+            mdr_gst_amt = ledger.tax_fields.get("mdr_gst")
+            fee_amt = ledger.tax_fields.get("fee_amount")
+            return self._result(
+                txn_id, STATUS_MATCH, RULE_MDR_FEE_DEDUCTION,
+                {"gateway": gw.source_row_id, "bank": mdr_match, "ledger": ledger_id},
+                {"gateway_amount": gw.amount.normalized,
+                 "mdr_amount": mdr_amt.normalized if mdr_amt else 0,
+                 "mdr_gst": mdr_gst_amt.normalized if mdr_gst_amt else 0,
+                 "fee_amount": fee_amt.normalized if fee_amt else 0,
+                 "bank_amount": self.bank_by_row_id[mdr_match].amount.normalized,
+                 "explanation": "MDR/fee deduction explains variance"},
+                None,
+            )
+
+        # Rule 5 (LLM-assisted, independently validated): split settlement.
         calls_before = self.llm_calls_made
         matched_ids, llm_rec, split_reason = self._investigate_split_settlement(
             txn_id, gw, ledger, candidate_ids,
@@ -784,17 +903,22 @@ class LLMAdjudicator:
                 txn_id, STATUS_MATCH, RULE_SPLIT_SETTLEMENT_SUM,
                 {"gateway": gw.source_row_id, "bank": ",".join(matched_ids), "ledger": ledger_id},
                 {"gateway_amount": gw.amount.normalized, "bank_credit_total": total,
-                 "bank_row_ids": matched_ids},
+                 "bank_row_ids": matched_ids,
+                 "llm_evidence": llm_rec.get("evidence", {}) if llm_rec else {},
+                 "adjustment": llm_rec.get("adjustment", {}) if llm_rec else {}},
                 REASON_LLM_RECOMMENDATION_VALIDATED,
                 llm_consulted=True,
                 llm_recommendation=llm_rec,
+                confidence=llm_rec.get("confidence") if llm_rec else None,
             )
 
+        result_status = STATUS_AI_RETRY_REQUIRED if split_reason == REASON_LLM_UNAVAILABLE else STATUS_HUMAN_REVIEW
+        result_reason = REASON_AI_RETRY_REQUIRED if split_reason == REASON_LLM_UNAVAILABLE else split_reason
         return self._result(
-            txn_id, STATUS_HUMAN_REVIEW, None, r.matched_records,
+            txn_id, result_status, None, r.matched_records,
             {"gateway_amount": gw.amount.normalized,
              "candidates": r.candidate_records},
-            split_reason,
+            result_reason,
             llm_consulted=llm_was_called,
             llm_recommendation=llm_rec,
         )
@@ -869,7 +993,8 @@ class LLMAdjudicator:
     @staticmethod
     def _result(txn_id: str, status: str, rule: Optional[str], matched_records: dict,
                 evidence: dict, reason: Optional[str],
-                llm_consulted: bool = False, llm_recommendation: Optional[dict] = None) -> Tier3Result:
+                llm_consulted: bool = False, llm_recommendation: Optional[dict] = None,
+                confidence: Optional[float] = None) -> Tier3Result:
         return Tier3Result(
             transaction_id=txn_id,
             status=status,
@@ -880,6 +1005,7 @@ class LLMAdjudicator:
             reason=reason,
             llm_consulted=llm_consulted,
             llm_recommendation=llm_recommendation,
+            confidence=confidence,
         )
 
 
@@ -955,6 +1081,23 @@ def run_tier3(tier2_results: list[Tier2Result], tier1_matcher: ExactMatcher,
         llm_recommendations_rejected=adjudicator.llm_rejected,
     )
     return results, summary
+
+
+def retry_tier3_transaction(transaction_id: str, tier2_results: list[Tier2Result],
+                            tier1_matcher: ExactMatcher,
+                            llm_client: LLMClient) -> Tier3Result:
+    """Retry one existing Tier-3 residue transaction with a supplied client.
+
+    This deliberately does not rerun normalization, Tier 1, Tier 2, or the
+    full dataset. Candidate discovery and validation remain identical to the
+    normal Tier 3 path.
+    """
+    residue = get_tier2_residue(tier2_results)
+    result = next((r for r in residue if r.transaction_id == transaction_id), None)
+    if result is None:
+        raise KeyError(transaction_id)
+    adjudicator = LLMAdjudicator(tier1_matcher, tier2_results, llm_client=llm_client)
+    return adjudicator.resolve(result, {})
 
 
 def get_final_residue(results: list[Tier3Result]) -> list[Tier3Result]:

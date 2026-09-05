@@ -61,7 +61,10 @@ class GoodSplitSettlementLLM:
         return json.dumps({
             "decision": "MATCH",
             "bank_row_ids": ids,
+            "confidence": 0.94,
             "rationale": "combined amounts within tolerance",
+            "evidence": {"source": "candidate_sum"},
+            "adjustment": {},
         })
 
 

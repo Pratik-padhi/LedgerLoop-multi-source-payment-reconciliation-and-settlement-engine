@@ -121,7 +121,12 @@ class TestGeminiLLMClient(unittest.TestCase):
         self.assertIn("decision", schema["properties"])
         self.assertIn("bank_row_ids", schema["properties"])
         self.assertIn("rationale", schema["properties"])
-        self.assertEqual(schema["required"], ["decision", "bank_row_ids", "rationale"])
+        self.assertEqual(
+            schema["required"],
+            ["decision", "bank_row_ids", "confidence", "rationale", "evidence", "adjustment"],
+        )
+        self.assertEqual(schema["properties"]["confidence"]["minimum"], 0.0)
+        self.assertEqual(schema["properties"]["confidence"]["maximum"], 1.0)
         # decision enum must restrict to the three valid dispositions
         self.assertEqual(
             set(schema["properties"]["decision"]["enum"]),
