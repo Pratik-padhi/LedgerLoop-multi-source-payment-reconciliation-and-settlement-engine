@@ -617,8 +617,8 @@ def normalize_ledger_row(row: dict[str, str],
         status                 = entry_type (SALE / REFUND — used as the
                                   closest ledger equivalent of "status")
         secondary_references   = invoice_reference
-        tax_fields              = tax_amount, tds_amount — kept STRICTLY
-                                  separate from `amount`/recorded_amount, per
+        tax_fields              = tax_amount, tds_amount, gst_amount, mdr_amount, mdr_gst, fee_amount —
+                                  kept STRICTLY separate from `amount`/recorded_amount, per
                                   spec Section 8/15. Never combined, never
                                   used to adjust `amount`.
     """
@@ -639,6 +639,11 @@ def normalize_ledger_row(row: dict[str, str],
     amount = normalize_amount(row.get("recorded_amount", ""))
     tax_amount = normalize_amount(row.get("tax_amount", "0.00"))
     tds_amount = normalize_amount(row.get("tds_amount", "0.00"))
+    # New optional tax/fee fields (backward compatible - default to 0.00)
+    gst_amount = normalize_amount(row.get("gst_amount", "0.00"))
+    mdr_amount = normalize_amount(row.get("mdr_amount", "0.00"))
+    mdr_gst = normalize_amount(row.get("mdr_gst", "0.00"))
+    fee_amount = normalize_amount(row.get("fee_amount", "0.00"))
 
     status = (row.get("entry_type") or "").strip() or None
 
@@ -663,6 +668,10 @@ def normalize_ledger_row(row: dict[str, str],
         tax_fields={
             "tax_amount": tax_amount,
             "tds_amount": tds_amount,
+            "gst_amount": gst_amount,
+            "mdr_amount": mdr_amount,
+            "mdr_gst": mdr_gst,
+            "fee_amount": fee_amount,
         },
         raw_record=dict(row),
     )

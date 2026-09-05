@@ -97,6 +97,7 @@ from typing import Optional, Protocol
 from core.match_exact import ExactMatcher, Tier1Result
 from core.match_fuzzy import Tier2Result, get_tier2_residue
 from core.normalize import CanonicalRecord
+from core import accounting as accounting_model
 
 
 logger = logging.getLogger(__name__)
@@ -408,7 +409,9 @@ class LLMAdjudicator:
         tds = ledger.tax_fields.get("tds_amount")
         if not tds or tds.normalized is None or tds.normalized <= 0 or gw.amount.normalized is None:
             return None
-        expected = Decimal(str(gw.amount.normalized)) - Decimal(str(tds.normalized))
+        # Reuse the shared settlement layer (gross - tds = expected bank).
+        expected = accounting_model.compute_expected_net(
+            gw.amount.normalized, tds=tds.normalized)
         for bid in candidate_bank_ids:
             if not self._is_available(bid):
                 continue
@@ -421,7 +424,13 @@ class LLMAdjudicator:
                             candidate_bank_ids: list[str]) -> Optional[str]:
         if refund_ledger is None or gw.amount.normalized is None:
             return None
-        expected = Decimal(str(gw.amount.normalized)) + Decimal(str(refund_ledger.amount.normalized))
+        # Ledger refund entries carry a negative amount; reduce it to a
+        # positive magnitude for the shared settlement layer
+        # (gross - refund_magnitude == gross + signed_refund).
+        signed = refund_ledger.amount.normalized
+        refund_magnitude = abs(Decimal(str(signed))) if signed is not None and signed < 0 else Decimal("0")
+        expected = accounting_model.compute_expected_net(
+            gw.amount.normalized, refund=refund_magnitude)
         for bid in candidate_bank_ids:
             if not self._is_available(bid):
                 continue
@@ -450,11 +459,13 @@ class LLMAdjudicator:
 
     def _try_gst_decomposition(self, gw: CanonicalRecord, ledger: CanonicalRecord,
                                    candidate_bank_ids: list[str]) -> Optional[str]:
-        """Check if gateway amount plus GST equals bank amount."""
+        """Check if gateway amount plus GST equals bank amount (via shared layer)."""
         gst = ledger.tax_fields.get("gst_amount")
         if not gst or gst.normalized is None or gst.normalized <= 0 or gw.amount.normalized is None:
             return None
-        expected = Decimal(str(gw.amount.normalized)) + Decimal(str(gst.normalized))
+        # gross + gst = expected bank (gateway gross is pre-GST taxable base).
+        expected = accounting_model.compute_expected_net(
+            gw.amount.normalized, gst=gst.normalized)
         for bid in candidate_bank_ids:
             if not self._is_available(bid):
                 continue
@@ -465,7 +476,7 @@ class LLMAdjudicator:
 
     def _try_mdr_fee_decomposition(self, gw: CanonicalRecord, ledger: CanonicalRecord,
                                    candidate_bank_ids: list[str]) -> Optional[str]:
-        """Check if gateway amount minus MDR and fees equals bank amount."""
+        """Check if gateway amount minus MDR/fees equals bank amount (via shared layer)."""
         mdr = ledger.tax_fields.get("mdr_amount")
         mdr_gst = ledger.tax_fields.get("mdr_gst")
         fee = ledger.tax_fields.get("fee_amount")
@@ -476,7 +487,9 @@ class LLMAdjudicator:
         fee_val = Decimal(str(fee.normalized)) if fee and fee.normalized and fee.normalized > 0 else Decimal("0")
         if mdr_val == 0 and mdr_gst_val == 0 and fee_val == 0:
             return None
-        expected = Decimal(str(gw.amount.normalized)) - mdr_val - mdr_gst_val - fee_val
+        # gross - mdr - mdr_gst - fee = expected bank.
+        expected = accounting_model.compute_expected_net(
+            gw.amount.normalized, mdr=mdr_val, mdr_gst=mdr_gst_val, fee=fee_val)
         for bid in candidate_bank_ids:
             if not self._is_available(bid):
                 continue
@@ -818,12 +831,17 @@ class LLMAdjudicator:
         tds_match = self._try_tds_linked(gw, ledger, candidate_ids)
         if tds_match:
             self._consume(tds_match)
+            bank_rec = self.bank_by_row_id[tds_match]
+            settlement = accounting_model.build_settlement_from_ledger(
+                gw.amount.normalized, ledger, actual_bank=bank_rec.amount.normalized,
+                source_rows={"gateway": gw.source_row_id, "ledger": ledger.source_row_id, "bank": tds_match})
             return self._result(
                 txn_id, STATUS_MATCH, RULE_TDS_LINKED_NET_AMOUNT,
                 {"gateway": gw.source_row_id, "bank": tds_match, "ledger": ledger_id},
                 {"gateway_amount": gw.amount.normalized,
                  "tds_amount": ledger.tax_fields["tds_amount"].normalized,
-                 "bank_amount": self.bank_by_row_id[tds_match].amount.normalized},
+                 "bank_amount": bank_rec.amount.normalized,
+                 "settlement": settlement.to_dict()},
                 None,
             )
 
@@ -844,6 +862,25 @@ class LLMAdjudicator:
         refund_match = self._try_refund_linked(gw, refund_ledger, candidate_ids)
         if refund_match:
             self._consume(refund_match)
+            bank_rec = self.bank_by_row_id[refund_match]
+            # Compute refund magnitude from the actual refund ledger row
+            # (negative recorded_amount → positive magnitude). We use
+            # compute_settlement directly here because build_settlement_from_ledger
+            # reads the ledger's own amount for the refund field — which works
+            # correctly for the refund ledger row but not the original SALE row.
+            _rl_amount = refund_ledger.amount.normalized if refund_ledger else None
+            _refund_mag = float(abs(Decimal(str(_rl_amount)))) if _rl_amount is not None and _rl_amount < 0 else 0
+            settlement = accounting_model.compute_settlement(
+                gw.amount.normalized,
+                refund=_refund_mag,
+                actual_bank=bank_rec.amount.normalized,
+                source_rows={
+                    "gateway": gw.source_row_id,
+                    "ledger": ledger.source_row_id,
+                    "bank": refund_match,
+                    "refund_ledger": refund_ledger.source_row_id if refund_ledger else None,
+                },
+            )
             return self._result(
                 txn_id, STATUS_MATCH, RULE_REFUND_LINKED_NET_AMOUNT,
                 {"gateway": gw.source_row_id, "bank": refund_match, "ledger": ledger_id},
@@ -851,7 +888,8 @@ class LLMAdjudicator:
                  "refund_amount": refund_ledger.amount.normalized,
                  "refund_gateway_row": refund_gw.source_row_id,
                  "refund_ledger_row": refund_ledger.source_row_id,
-                 "bank_amount": self.bank_by_row_id[refund_match].amount.normalized},
+                 "bank_amount": bank_rec.amount.normalized,
+                 "settlement": settlement.to_dict()},
                 None,
             )
 
@@ -859,14 +897,17 @@ class LLMAdjudicator:
         gst_match = self._try_gst_decomposition(gw, ledger, candidate_ids)
         if gst_match:
             self._consume(gst_match)
-            gst_amt = ledger.tax_fields["gst_amount"].normalized
+            bank_rec = self.bank_by_row_id[gst_match]
+            settlement = accounting_model.build_settlement_from_ledger(
+                gw.amount.normalized, ledger, actual_bank=bank_rec.amount.normalized,
+                source_rows={"gateway": gw.source_row_id, "ledger": ledger.source_row_id, "bank": gst_match})
             return self._result(
                 txn_id, STATUS_MATCH, RULE_GST_DECOMPOSITION,
                 {"gateway": gw.source_row_id, "bank": gst_match, "ledger": ledger_id},
                 {"gateway_amount": gw.amount.normalized,
-                 "gst_amount": gst_amt,
-                 "bank_amount": self.bank_by_row_id[gst_match].amount.normalized,
-                 "explanation": "GST decomposition explains variance"},
+                 "gst_amount": ledger.tax_fields["gst_amount"].normalized,
+                 "bank_amount": bank_rec.amount.normalized,
+                 "settlement": settlement.to_dict()},
                 None,
             )
 
@@ -874,18 +915,19 @@ class LLMAdjudicator:
         mdr_match = self._try_mdr_fee_decomposition(gw, ledger, candidate_ids)
         if mdr_match:
             self._consume(mdr_match)
-            mdr_amt = ledger.tax_fields.get("mdr_amount")
-            mdr_gst_amt = ledger.tax_fields.get("mdr_gst")
-            fee_amt = ledger.tax_fields.get("fee_amount")
+            bank_rec = self.bank_by_row_id[mdr_match]
+            settlement = accounting_model.build_settlement_from_ledger(
+                gw.amount.normalized, ledger, actual_bank=bank_rec.amount.normalized,
+                source_rows={"gateway": gw.source_row_id, "ledger": ledger.source_row_id, "bank": mdr_match})
             return self._result(
                 txn_id, STATUS_MATCH, RULE_MDR_FEE_DEDUCTION,
                 {"gateway": gw.source_row_id, "bank": mdr_match, "ledger": ledger_id},
                 {"gateway_amount": gw.amount.normalized,
-                 "mdr_amount": mdr_amt.normalized if mdr_amt else 0,
-                 "mdr_gst": mdr_gst_amt.normalized if mdr_gst_amt else 0,
-                 "fee_amount": fee_amt.normalized if fee_amt else 0,
-                 "bank_amount": self.bank_by_row_id[mdr_match].amount.normalized,
-                 "explanation": "MDR/fee deduction explains variance"},
+                 "mdr_amount": ledger.tax_fields.get("mdr_amount").normalized if ledger.tax_fields.get("mdr_amount") else 0,
+                 "mdr_gst": ledger.tax_fields.get("mdr_gst").normalized if ledger.tax_fields.get("mdr_gst") else 0,
+                 "fee_amount": ledger.tax_fields.get("fee_amount").normalized if ledger.tax_fields.get("fee_amount") else 0,
+                 "bank_amount": bank_rec.amount.normalized,
+                 "settlement": settlement.to_dict()},
                 None,
             )
 
