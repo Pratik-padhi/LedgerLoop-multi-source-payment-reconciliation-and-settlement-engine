@@ -589,7 +589,10 @@ async function requestAIReview(tid, button, box) {
     var review = data.review || {};
     var conf = review.confidence != null ? Math.round(review.confidence * 100) : null;
     var confCls = conf != null ? (conf >= 75 ? "high" : (conf >= 50 ? "medium" : "low")) : "";
-    target.innerHTML = '<div class="evidence-block"><h4>AI Review (read-only)</h4>' +
+    var heading = data.source === "DETERMINISTIC_FALLBACK"
+      ? "Stored Evidence Review (Gemini unavailable)"
+      : "AI Review (read-only)";
+    target.innerHTML = '<div class="evidence-block"><h4>' + heading + '</h4>' +
       (conf != null ? '<div class="confidence-bar" style="margin-bottom:0.4rem"><div class="confidence-fill ' + confCls + '" style="width:' + conf + '%"></div></div>' : '') +
       '<div class="ev-row"><span class="ek">Decision</span><span class="ev">' + esc(review.decision || "—") + '</span></div>' +
       '<div class="ev-row"><span class="ek">Confidence</span><span class="ev">' + pct(conf) + '%</span></div>' +
@@ -1068,7 +1071,9 @@ async function chatAIReview(tid, button) {
     var confCls = conf != null ? (conf >= 75 ? "high" : (conf >= 50 ? "medium" : "low")) : "";
     var resultHtml =
       '<div class="chat-review-result">' +
-        '<div class="chat-review-head">🤖 AI Review Result</div>' +
+        '<div class="chat-review-head">' +
+          (data.source === "DETERMINISTIC_FALLBACK" ? "Stored Evidence Review" : "🤖 AI Review Result") +
+        '</div>' +
         (conf != null ?
           '<div class="chat-confidence" style="border:none;padding:0.15rem 0">' +
             '<span class="chat-confidence-label">Confidence</span>' +

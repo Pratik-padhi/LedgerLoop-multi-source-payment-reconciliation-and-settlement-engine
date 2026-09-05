@@ -563,12 +563,32 @@ def api_ai_review(txn_id: str):
             or not isinstance(review.get("adjustment", {}), dict)
         ):
             return jsonify({"error": "Gemini returned an invalid AI review", "transaction_id": txn_id}), 422
-    except Exception as error:
+    except Exception:
+        status = data.get("status")
+        deterministic_decision = "MATCH" if status in ("MATCH", "MATCHED") else "HUMAN_REVIEW"
+        review = {
+            "decision": deterministic_decision,
+            "confidence": None,
+            "rationale": (
+                "Gemini was unavailable. This read-only review uses the stored "
+                "pipeline result and does not make a new matching decision."
+            ),
+            "evidence": {
+                "source": "stored_pipeline_context",
+                "status": status,
+                "rule": data.get("rule"),
+                "reason": data.get("reason"),
+            },
+            "adjustment": {},
+        }
         return jsonify({
-            "error": "Gemini unavailable for AI review",
             "transaction_id": txn_id,
-            "retryable": True,
-        }), 503
+            "review": review,
+            "source_status": status,
+            "source_tier": entry["tier"],
+            "source": "DETERMINISTIC_FALLBACK",
+            "llm_available": False,
+        })
 
     return jsonify({
         "transaction_id": txn_id,

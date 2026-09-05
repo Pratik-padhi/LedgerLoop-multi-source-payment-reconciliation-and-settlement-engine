@@ -397,8 +397,11 @@ class TestRetryEndpoint(unittest.TestCase):
         original = dict(server_module._index["PAY109"]["data"])
         with patch.object(server_module, "GeminiFallbackClient", side_effect=Exception("provider down")):
             response = self.client.post("/api/transaction/PAY109/ai-review")
-        self.assertEqual(response.status_code, 503)
-        self.assertTrue(response.get_json()["retryable"])
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["source"], "DETERMINISTIC_FALLBACK")
+        self.assertFalse(data["llm_available"])
+        self.assertEqual(data["review"]["decision"], "HUMAN_REVIEW")
         self.assertEqual(server_module._index["PAY109"]["data"], original)
 
     def test_retry_llm_rejects_stage3_transaction(self):
