@@ -266,6 +266,53 @@ class TestTransactionEndpoint(unittest.TestCase):
         self.assertIn(r["status"], sc)
 
 
+class TestTransactionsIndexEndpoint(unittest.TestCase):
+    """Read-only summary index powering the Transaction Explorer."""
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    def test_returns_200(self):
+        r = self.client.get("/api/transactions")
+        self.assertEqual(r.status_code, 200)
+
+    def test_has_expected_structure(self):
+        r = self.client.get("/api/transactions")
+        d = r.get_json()
+        self.assertIn("transactions", d)
+        self.assertIn("count", d)
+        self.assertEqual(d["count"], len(d["transactions"]))
+        self.assertGreater(d["count"], 0)
+
+    def test_rows_carry_explorer_fields(self):
+        r = self.client.get("/api/transactions")
+        row = r.get_json()["transactions"][0]
+        for field in ("transaction_id", "tier", "status", "rule", "reason",
+                      "gateway_row", "ledger_row", "bank_row_ids",
+                      "amount", "llm_consulted", "settlement"):
+            self.assertIn(field, row)
+
+    def test_counts_agree_with_overview(self):
+        """The index covers every transaction the overview counts."""
+        tx = self.client.get("/api/transactions").get_json()
+        ov = self.client.get("/api/overview").get_json()
+        self.assertEqual(tx["count"], ov["total_transactions"])
+        self.assertEqual(
+            len(tx["transactions"]),
+            sum(ov["status_counts"].values()),
+        )
+
+    def test_pay109_carries_settlement(self):
+        """STAGE_3 split settlements expose their breakdown via the index."""
+        r = self.client.get("/api/transactions")
+        rows = r.get_json()["transactions"]
+        pay109 = next((x for x in rows if x["transaction_id"] == "PAY109"), None)
+        self.assertIsNotNone(pay109)
+        self.assertEqual(pay109["tier"], "STAGE_3")
+        self.assertIsNotNone(pay109["settlement"])
+
+
 class TestRetryEndpoint(unittest.TestCase):
     """Retry paths for Tier 3 (AI_RETRY_REQUIRED) and Stage 3 (AI_RETRY_REQUIRED).
 

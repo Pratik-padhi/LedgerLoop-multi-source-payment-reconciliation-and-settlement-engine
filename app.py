@@ -357,6 +357,40 @@ def api_exceptions():
 
 
 # ---------------------------------------------------------------------------
+# /api/transactions — read-only summary index for the Transaction Explorer
+# ---------------------------------------------------------------------------
+
+@app.route("/api/transactions")
+def api_transactions():
+    """Read-only index of every transaction result (any tier).
+
+    Derived entirely from the already-computed in-memory ``_index``; never
+    consults ground truth and never mutates any result. Powers the Transaction
+    Explorer (client-side search, filter and sort) and, for STAGE_3 split
+    settlements, carries the settlement breakdown so the UI can show the
+    Expected -> Actual -> Variance relationship directly.
+    """
+    rows = []
+    for tid, entry in sorted(_index.items()):
+        d = entry["data"]
+        gw_id = (d.get("matched_records") or {}).get("gateway")
+        rows.append({
+            "transaction_id": tid,
+            "tier": entry["tier"],
+            "status": d.get("status"),
+            "rule": d.get("rule"),
+            "reason": d.get("reason"),
+            "gateway_row": gw_id,
+            "ledger_row": (d.get("matched_records") or {}).get("ledger"),
+            "bank_row_ids": d.get("bank_row_ids", []),
+            "amount": _gw_amount_by_source.get(gw_id) if gw_id else None,
+            "llm_consulted": bool(d.get("llm_consulted")),
+            "settlement": d.get("settlement"),
+        })
+    return jsonify({"transactions": rows, "count": len(rows)})
+
+
+# ---------------------------------------------------------------------------
 # /api/transaction/<id> — full detail for one transaction
 # ---------------------------------------------------------------------------
 

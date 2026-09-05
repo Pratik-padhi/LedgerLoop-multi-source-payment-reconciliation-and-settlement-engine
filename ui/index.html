@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LedgerLoop</title>
+<title>LedgerLoop — Payment Reconciliation</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -15,12 +15,19 @@
   <!-- Sidebar -->
   <aside class="sidebar" role="navigation" aria-label="Main navigation">
     <div class="sidebar-brand">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 14.21 3"/><path d="M22 12c0 5.523-4.477 10-10 10"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 12a8 8 0 0 1 14-5.3"/>
+        <polyline points="4 4 4 8 8 8"/>
+        <path d="M20 12a8 8 0 0 1-14 5.3"/>
+        <polyline points="20 20 20 16 16 16"/>
+      </svg>
       <div>
         <span class="brand-name">LedgerLoop</span>
-        <span class="brand-sub">AI-Powered Reconciliation</span>
+        <span class="brand-sub">Reconciliation Engine</span>
       </div>
     </div>
+
+    <div class="nav-section-label">Workspace</div>
     <nav class="nav" id="nav">
       <button class="nav-item active" data-panel="overview">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -40,10 +47,12 @@
         Settlement Intelligence
       </button>
     </nav>
+
     <div class="sidebar-footer">
+      <div class="sidebar-status-pill" id="pipeline-status">Pipeline complete</div>
       <button class="theme-toggle btn btn-secondary" id="theme-toggle" aria-label="Toggle theme">
-        <span id="theme-icon">🌙</span>
-        <span id="theme-label">Dark</span>
+        <span id="theme-icon">☀️</span>
+        <span id="theme-label">Light</span>
       </button>
     </div>
   </aside>
