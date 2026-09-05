@@ -23,6 +23,13 @@ venv/
 CLAUDE.md
 claude.md
 
+# Local coding-session exports
+api error session.md
+api error session.txt
+session_claude.txt
+session.pdf
+current Progress.md
+
 # Generated outputs (regeneratable)
 outputs/
 data/normalized/
