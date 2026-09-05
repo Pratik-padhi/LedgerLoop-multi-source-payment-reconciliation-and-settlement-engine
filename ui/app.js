@@ -206,11 +206,7 @@ function renderOverview() {
           '<tr><td>Gemini calls made</td><td class="num">' + (d.llm_calls_made || 0) + '</td></tr>' +
           '<tr><td>Recommendations validated</td><td class="num">' + (d.llm_recommendations_validated || 0) + '</td></tr>' +
           '<tr><td>Recommendations rejected</td><td class="num">' + (d.llm_recommendations_rejected || 0) + '</td></tr>' +
-<<<<<<< HEAD
-          (d.llm_models && d.llm_models.length ? '<tr><td>Model chain</td><td class="num" style="font-size:0.72rem">' + d.llm_models.map(function (m) { return esc(m); }).join(" → ") + '</td></tr>' : '') +
-=======
           (d.llm_models && d.llm_models.length ? '<tr><td>Model chain</td><td class="num" style="font-size:0.7rem;white-space:nowrap">' + d.llm_models.map(function (m) { return esc(m); }).join(' <span style="color:var(--text-4)">→</span> ') + '</td></tr>' : '') +
->>>>>>> redesign-ui
         '</tbody></table></div></div>' +
     '</div>';
 
@@ -591,15 +587,6 @@ async function requestAIReview(tid, button, box) {
     var target = box.querySelector("[data-ai-review-result]");
     if (!res.ok) throw new Error(data.error || "AI review failed");
     var review = data.review || {};
-<<<<<<< HEAD
-    target.innerHTML = '<div class="evidence-block"><h4>AI Review (read-only)</h4>' +
-      '<div class="ev-row"><span class="ek">Decision</span><span class="ev">' + esc(review.decision || "—") + '</span></div>' +
-      '<div class="ev-row"><span class="ek">Confidence</span><span class="ev">' + pct(Number(review.confidence || 0) * 100) + '%</span></div>' +
-      '<div class="ev-row"><span class="ek">Rationale</span><span class="ev">' + esc(review.rationale || "—") + '</span></div>' +
-      '<div class="ev-row"><span class="ek">Evidence</span><span class="ev">' + esc(JSON.stringify(review.evidence || {})) + '</span></div>' +
-      '</div>';
-    button.textContent = "AI Review complete";
-=======
     var conf = review.confidence != null ? Math.round(review.confidence * 100) : null;
     var confCls = conf != null ? (conf >= 75 ? "high" : (conf >= 50 ? "medium" : "low")) : "";
     target.innerHTML = '<div class="evidence-block"><h4>AI Review (read-only)</h4>' +
@@ -610,7 +597,6 @@ async function requestAIReview(tid, button, box) {
       '<div class="ev-row"><span class="ek">Evidence</span><span class="ev">' + esc(JSON.stringify(review.evidence || {})) + '</span></div>' +
       '</div>';
     button.textContent = "✓ Reviewed";
->>>>>>> redesign-ui
   } catch (err) {
     button.disabled = false;
     button.textContent = "AI Review";
@@ -840,19 +826,6 @@ function initQA() {
   btn.addEventListener("click", submit);
   input.addEventListener("keydown", function (e) {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
-<<<<<<< HEAD
-  });
-  input.addEventListener("input", function () { autoResize(input); });
-
-  // Suggestion chips
-  el.querySelectorAll(".chat-suggestion").forEach(function (b) {
-    b.addEventListener("click", function () {
-      input.value = b.textContent;
-      autoResize(input);
-      submit();
-    });
-=======
->>>>>>> redesign-ui
   });
   input.addEventListener("input", function () { autoResize(input); });
 
@@ -899,10 +872,6 @@ function chatWelcomeHtml() {
 
 function addUserMessage(q) {
   var msgs = document.getElementById("chat-messages");
-<<<<<<< HEAD
-  // Remove welcome screen
-=======
->>>>>>> redesign-ui
   var welcome = msgs.querySelector(".chat-welcome");
   if (welcome) welcome.remove();
 
@@ -1011,17 +980,6 @@ function addAIResponse(data, reviewMode) {
     '</div>';
   }
 
-<<<<<<< HEAD
-  // Action buttons
-  var actionsHtml = "";
-  var actions = [];
-  if (tid) {
-    actions.push('<button class="chat-action-btn primary" onclick="chatViewTransaction(\'' + esc(tid) + '\')">📄 View Transaction</button>');
-    actions.push('<button class="chat-action-btn" onclick="chatAIReview(\'' + esc(tid) + '\', this)">🤖 AI Review</button>');
-  }
-  if (data.retrieved_data && data.retrieved_data[0] && data.retrieved_data[0].status === "AI_RETRY_REQUIRED") {
-    if (tid) actions.push('<button class="chat-action-btn" onclick="chatRetryLLM(\'' + esc(tid) + '\', this)">↻ Retry Gemini</button>');
-=======
   // Action buttons — using data attributes instead of inline onclick (IIFE-safe)
   var actionsHtml = "";
   var actions = [];
@@ -1031,7 +989,6 @@ function addAIResponse(data, reviewMode) {
   }
   if (data.retrieved_data && data.retrieved_data[0] && data.retrieved_data[0].status === "AI_RETRY_REQUIRED") {
     if (tid) actions.push('<button class="chat-action-btn" data-chat-action="retry-llm" data-chat-tid="' + esc(tid) + '">↻ Retry Gemini</button>');
->>>>>>> redesign-ui
   }
   if (actions.length) {
     actionsHtml = '<div class="chat-actions">' + actions.join("") + '</div>';
@@ -1070,10 +1027,6 @@ function updateFollowUps(data) {
   var container = document.querySelector(".chat-messages");
   if (!container) return;
 
-<<<<<<< HEAD
-  // Update the suggestions shown at the bottom (or add them after last message)
-=======
->>>>>>> redesign-ui
   var existing = container.querySelector(".chat-follow-ups");
   if (existing) existing.remove();
 
@@ -1098,11 +1051,7 @@ function updateFollowUps(data) {
 
 function chatViewTransaction(tid) {
   switchPanel("transactions");
-<<<<<<< HEAD
-  setTimeout(function () { loadTxnDetail(tid); }, 100);
-=======
   setTimeout(function () { _selectedTxn = tid; loadTxnDetail(tid); }, 100);
->>>>>>> redesign-ui
 }
 
 async function chatAIReview(tid, button) {
@@ -1121,11 +1070,7 @@ async function chatAIReview(tid, button) {
       '<div class="chat-review-result">' +
         '<div class="chat-review-head">🤖 AI Review Result</div>' +
         (conf != null ?
-<<<<<<< HEAD
-          '<div class="chat-confidence" style="border:none;padding:0.2rem 0">' +
-=======
           '<div class="chat-confidence" style="border:none;padding:0.15rem 0">' +
->>>>>>> redesign-ui
             '<span class="chat-confidence-label">Confidence</span>' +
             '<div class="chat-confidence-bar"><div class="chat-confidence-fill ' + confCls + '" style="width:' + conf + '%"></div></div>' +
             '<span class="chat-confidence-val">' + conf + '%</span>' +
@@ -1134,18 +1079,10 @@ async function chatAIReview(tid, button) {
           (review.decision ? '<div class="chat-info-row"><span class="chat-info-key">Decision</span><span class="chat-info-val">' + esc(review.decision) + '</span></div>' : '') +
           (review.rationale ? '<div class="chat-info-row"><span class="chat-info-key">Rationale</span><span class="chat-info-val">' + esc(review.rationale) + '</span></div>' : '') +
           (review.evidence && Object.keys(review.evidence).length > 0 ?
-<<<<<<< HEAD
-            '<div class="chat-info-row"><span class="chat-info-key">Evidence</span><span class="chat-info-val" style="font-family:var(--font-mono);font-size:0.72rem">' + esc(JSON.stringify(review.evidence)) + '</span></div>' : '') +
-        '</div>' +
-      '</div>';
-
-    // Insert the review result into the current chat
-=======
             '<div class="chat-info-row"><span class="chat-info-key">Evidence</span><span class="chat-info-val" style="font-family:var(--font-mono);font-size:0.7rem">' + esc(JSON.stringify(review.evidence)) + '</span></div>' : '') +
         '</div>' +
       '</div>';
 
->>>>>>> redesign-ui
     var msgs = document.getElementById("chat-messages");
     var div = document.createElement("div");
     div.className = "chat-msg ai";
