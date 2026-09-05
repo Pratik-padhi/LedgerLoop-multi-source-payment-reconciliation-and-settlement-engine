@@ -58,7 +58,10 @@ class TestOverviewEndpoint(unittest.TestCase):
         d = r.get_json()
         for key in ("total_transactions", "status_counts", "tier_counts",
                     "rule_counts", "tier1_summary", "tier2_summary",
-                    "tier3_summary", "llm_calls_made"):
+                    "tier3_summary", "llm_calls_made",
+                    "gateway_value", "reconciled_value",
+                    "reconciliation_rate", "exception_count",
+                    "settlement_variance"):
             self.assertIn(key, d, f"missing key: {key}")
 
     def test_total_matches_index(self):
@@ -88,6 +91,27 @@ class TestOverviewEndpoint(unittest.TestCase):
         t1 = d["tier1_summary"]
         self.assertIn("matched_count", t1)
         self.assertIn("total_logical_transactions", t1)
+
+    def test_kpi_values_non_negative(self):
+        r = self.client.get("/api/overview")
+        d = r.get_json()
+        self.assertGreaterEqual(d["gateway_value"], 0)
+        self.assertGreaterEqual(d["reconciled_value"], 0)
+        self.assertGreaterEqual(d["reconciliation_rate"], 0)
+        self.assertLessEqual(d["reconciliation_rate"], 100)
+        self.assertGreaterEqual(d["exception_count"], 0)
+
+    def test_reconciled_not_exceeds_gateway(self):
+        """Reconciled value cannot exceed total gateway value."""
+        r = self.client.get("/api/overview")
+        d = r.get_json()
+        self.assertLessEqual(d["reconciled_value"], d["gateway_value"] + 0.01)
+
+    def test_exception_count_matches_total_minus_matched(self):
+        r = self.client.get("/api/overview")
+        d = r.get_json()
+        matched = d["status_counts"].get("MATCH", 0) + d["status_counts"].get("MATCHED", 0)
+        self.assertEqual(d["exception_count"], d["total_transactions"] - matched)
 
     def test_no_hardcoded_numbers(self):
         """Counts come from the live pipeline, not fixtures."""
@@ -479,6 +503,20 @@ class TestStaticRoutes(unittest.TestCase):
     def test_root_content_type_html(self):
         r = self.client.get("/")
         self.assertIn("text/html", r.content_type)
+
+    def test_styles_css_serves_200(self):
+        """Static CSS must be served from the ui/ directory (regression: was 404)."""
+        r = self.client.get("/styles.css")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/css", r.content_type)
+        self.assertGreater(len(r.data), 1000)
+
+    def test_app_js_serves_200(self):
+        """Static JS must be served from the ui/ directory (regression: was 404)."""
+        r = self.client.get("/app.js")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("javascript", r.content_type)
+        self.assertGreater(len(r.data), 1000)
 
 
 class TestPipelineIsolation(unittest.TestCase):

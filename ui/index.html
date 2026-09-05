@@ -11,23 +11,33 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div class="shell">
+<div class="app">
   <!-- Sidebar -->
   <aside class="sidebar" role="navigation" aria-label="Main navigation">
     <div class="sidebar-brand">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 14.21 3"/><path d="M22 12c0 5.523-4.477 10-10 10"/></svg>
-      <span>LedgerLoop</span>
+      <div>
+        <span class="brand-name">LedgerLoop</span>
+        <span class="brand-sub">AI-Powered Reconciliation</span>
+      </div>
     </div>
-    <nav class="nav">
+    <nav class="nav" id="nav">
       <button class="nav-item active" data-panel="overview">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Overview
       </button>
       <button class="nav-item" data-panel="exceptions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         Exceptions
         <span class="badge" id="exc-badge" style="display:none">0</span>
       </button>
+      <button class="nav-item" data-panel="transactions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Transactions
+      </button>
       <button class="nav-item" data-panel="qa">
-        Q&A
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Settlement Intelligence
       </button>
     </nav>
     <div class="sidebar-footer">
@@ -41,32 +51,44 @@
   <!-- Main -->
   <main class="main" role="main">
     <!-- Overview Panel -->
-    <section class="panel active" id="panel-overview" aria-labelledby="overview-title">
-      <div class="card" style="margin-bottom:1.5rem">
-        <div class="card-head"><h1 id="overview-title">Reconciliation Dashboard</h1></div>
-        <div class="card-body" id="overview-content">
-          <div class="loading">Loading…</div>
-        </div>
+    <section class="panel active" id="panel-overview">
+      <div class="panel-head">
+        <h1>Reconciliation Overview</h1>
+        <span class="panel-subtitle" id="overview-subtitle"></span>
+      </div>
+      <div id="overview-content">
+        <div class="loading">Loading…</div>
       </div>
     </section>
 
     <!-- Exceptions Panel -->
-    <section class="panel" id="panel-exceptions" aria-labelledby="exceptions-title">
-      <div class="card" style="margin-bottom:1rem">
-        <div class="card-head"><h2 id="exceptions-title">Exceptions Requiring Attention</h2></div>
-        <div class="card-body" id="exceptions-content">
-          <div class="loading">Loading…</div>
-        </div>
+    <section class="panel" id="panel-exceptions">
+      <div class="panel-head">
+        <h1>Exceptions Requiring Attention</h1>
+      </div>
+      <div id="exceptions-content">
+        <div class="loading">Loading…</div>
+      </div>
+    </section>
+
+    <!-- Transactions Panel -->
+    <section class="panel" id="panel-transactions">
+      <div class="panel-head">
+        <h1>Transaction Explorer</h1>
+      </div>
+      <div id="transactions-content">
+        <div class="loading">Loading…</div>
       </div>
     </section>
 
     <!-- Q&A Panel -->
-    <section class="panel" id="panel-qa" aria-labelledby="qa-title">
-      <div class="card">
-        <div class="card-head"><h2 id="qa-title">Settlement Q&A</h2></div>
-        <div class="card-body" id="qa-content">
-          <div class="empty-msg">Select the Q&A tab to load the question interface.</div>
-        </div>
+    <section class="panel" id="panel-qa">
+      <div class="panel-head">
+        <h1>Settlement Intelligence</h1>
+        <span class="panel-subtitle">AI-assisted reconciliation analysis</span>
+      </div>
+      <div id="qa-content">
+        <div class="empty-msg">Select this tab to load the question interface.</div>
       </div>
     </section>
   </main>

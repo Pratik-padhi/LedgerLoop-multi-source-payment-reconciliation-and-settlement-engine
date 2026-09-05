@@ -178,6 +178,39 @@ for r in _r4:
     _index[r.transaction_id] = {"tier": "STAGE_3", "data": r.to_dict()}
 
 # ---------------------------------------------------------------------------
+# Overview KPIs — computed once at startup, read-only from here on.
+# ---------------------------------------------------------------------------
+
+_gw_amount_by_source: dict[str, float] = {}
+for r in _matcher.gateway_records:
+    _gw_amount_by_source[r.source_row_id] = float(r.amount.normalized)
+
+_gateway_value = sum(_gw_amount_by_source.values(), 0.0)
+_total_transactions = len(_index)
+_matched_count = sum(
+    1 for e in _index.values()
+    if e["data"].get("status") in ("MATCH", "MATCHED")
+)
+_exception_count = _total_transactions - _matched_count
+_reconciliation_rate = (
+    round(_matched_count / _total_transactions * 100, 1)
+    if _total_transactions > 0 else 0.0
+)
+
+_reconciled_value = 0.0
+for entry in _index.values():
+    d = entry["data"]
+    if d.get("status") in ("MATCH", "MATCHED"):
+        gw_id = (d.get("matched_records") or {}).get("gateway")
+        if gw_id and gw_id in _gw_amount_by_source:
+            _reconciled_value += _gw_amount_by_source[gw_id]
+
+_settlement_variance = 0.0
+for r in _r4:
+    if r.status == SplitStatus.MATCH and r.settlement and r.settlement.get("variance") is not None:
+        _settlement_variance += float(r.settlement["variance"])
+
+# ---------------------------------------------------------------------------
 # Settlement Q&A agent (read-only wrapper over pipeline results)
 # ---------------------------------------------------------------------------
 
@@ -201,6 +234,12 @@ app = Flask(__name__, static_folder=None)
 @app.route("/")
 def index():
     return send_from_directory(_UI_DIR, "index.html")
+
+
+@app.route("/<path:filename>")
+def ui_asset(filename):
+    """Serve static assets (CSS, JS, etc.) from the ui/ directory."""
+    return send_from_directory(_UI_DIR, filename)
 
 
 @app.route("/health")
@@ -255,6 +294,11 @@ def api_overview():
         "llm_calls_made": t3["llm_calls_made"],
         "llm_recommendations_validated": t3["llm_recommendations_validated"],
         "llm_recommendations_rejected": t3["llm_recommendations_rejected"],
+        "gateway_value": float(_gateway_value),
+        "reconciled_value": float(_reconciled_value),
+        "reconciliation_rate": _reconciliation_rate,
+        "exception_count": _exception_count,
+        "settlement_variance": float(_settlement_variance),
     })
 
 
