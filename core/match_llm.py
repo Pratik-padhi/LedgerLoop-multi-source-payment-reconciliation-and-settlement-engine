@@ -221,9 +221,11 @@ class GeminiLLMClient:
     `LLMClient` Protocol used by `LLMAdjudicator`/`run_tier3`.
     """
 
-    def __init__(self, model: Optional[str] = None, max_tokens: int = 500):
-        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+    def __init__(self, model: Optional[str] = None, max_tokens: int = 500,
+                 structured: bool = True):
+        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
         self.max_tokens = max_tokens
+        self.structured = structured
 
     def complete(self, system: str, user: str) -> str:
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -239,6 +241,10 @@ class GeminiLLMClient:
             "contents": [{"role": "user", "parts": [{"text": user}]}],
             "generationConfig": {
                 "maxOutputTokens": self.max_tokens,
+            },
+        }
+        if self.structured:
+            payload["generationConfig"].update({
                 "responseMimeType": "application/json",
                 "responseSchema": {
                     "type": "OBJECT",
@@ -265,8 +271,7 @@ class GeminiLLMClient:
                         "evidence", "adjustment",
                     ],
                 },
-            },
-        }
+            })
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model}:generateContent"

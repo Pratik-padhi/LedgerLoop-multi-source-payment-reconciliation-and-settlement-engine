@@ -107,13 +107,19 @@ def _run_pipeline():
     # Stage 3: split / multi-payment reconciliation over Tier 3 residue.
     already_consumed = _consumed_bank_ids(r1, r2, r3)
     pending_txns = _stage3_pending_txns(r3)
+    provider = os.environ.get("LLM_PROVIDER", "").lower()
+    stage3_llm = (
+        GeminiLLMClient()
+        if provider == "gemini" or os.environ.get("GEMINI_API_KEY")
+        else None
+    )
     r4, summary4 = run_stage3(
         matcher.gateway_records,
         matcher.bank_records,
         matcher.ledger_records,
         already_consumed,
         pending_txns,
-        llm_client=None,   # deterministic only at startup; ambiguous → AI_RETRY_REQUIRED
+        llm_client=stage3_llm,
     )
     return r1, summary1, r2, summary2, r3, summary3, r4, summary4, matcher
 
@@ -216,7 +222,7 @@ for r in _r4:
 
 _qa_agent = build_qa_agent(
     _r1, _r2, _r3, _r4,
-    use_llm_for_explanations=False,   # deterministic answers only; prose LLM off by default
+    use_llm_for_explanations=True,
 )
 
 print("  Q&A agent ready.", flush=True)
@@ -389,7 +395,7 @@ def api_retry_llm(txn_id: str):
     # Preserve Stage 3 results in the Q&A agent (like /retry-stage3 does).
     _qa_agent = build_qa_agent(
         _r1, _r2, _r3, _r4,
-        use_llm_for_explanations=False,
+        use_llm_for_explanations=True,
     )
 
     response = {"transaction_id": txn_id, "tier": "TIER_3", **result_data}
@@ -456,7 +462,7 @@ def api_retry_stage3(txn_id: str):
             _stage3_consumed.add(bank_id)
     _qa_agent = build_qa_agent(
         _r1, _r2, _r3, _r4,
-        use_llm_for_explanations=False,
+        use_llm_for_explanations=True,
     )
 
     response = {"transaction_id": txn_id, "tier": "STAGE_3", **result_data}

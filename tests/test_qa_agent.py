@@ -665,7 +665,17 @@ class TestGeminiUnavailableFallback(unittest.TestCase):
         """When a working LLM client is provided, llm_used=True on lookup questions."""
         class ProseOnlyLLM:
             def complete(self, system, user):
-                return "This transaction was reconciled using a split settlement rule."
+                return (
+                    "PAY109 was reconciled through a split settlement review using the available "
+                    "gateway, ledger, and bank evidence. The settlement consisted of two bank "
+                    "credits whose combined value was compared with the expected gateway amount. "
+                    "Python independently checked the candidate identifiers, row availability, "
+                    "duplicate usage, and arithmetic before accepting the recommendation. The "
+                    "result therefore describes the observed records and validation outcome, "
+                    "rather than treating Gemini as the financial source of truth. Any remaining "
+                    "difference is preserved as evidence for review, and the explanation does not "
+                    "invent missing records or override earlier deterministic matches."
+                )
 
         agent = build_qa_agent(
             _R1, _R2, _R3,

@@ -614,7 +614,8 @@ def _compose_with_gemini(
         "to these transactions based ONLY on the data provided. "
         "Do NOT invent any transaction IDs, amounts, dates, or evidence. "
         "Do NOT make any reconciliation decisions. "
-        "Respond in plain English, 3–6 sentences. No JSON, no bullet points."
+        "Respond in plain English, 70–150 words, in 4–8 sentences. "
+        "No JSON, no bullet points, and no unsupported claims."
     )
     user_payload = {
         "user_question": question,
@@ -622,8 +623,11 @@ def _compose_with_gemini(
     }
 
     try:
-        prose = llm_client.complete(system, json.dumps(user_payload, default=str))
-        return prose.strip(), True
+        prose = llm_client.complete(system, json.dumps(user_payload, default=str)).strip()
+        word_count = len(prose.split())
+        if 70 <= word_count <= 150:
+            return prose, True
+        return "", False
     except LLMUnavailableError:
         return "", False
     except Exception:
@@ -675,7 +679,7 @@ class SettlementQAAgent:
             # Auto-select Gemini from the environment (same logic as run_tier3)
             provider = os.environ.get("LLM_PROVIDER", "").lower()
             if provider == "gemini" or (not provider and os.environ.get("GEMINI_API_KEY")):
-                self._llm = GeminiLLMClient()
+                self._llm = GeminiLLMClient(structured=False)
             else:
                 self._llm = None
         else:
