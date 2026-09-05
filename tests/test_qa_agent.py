@@ -130,6 +130,11 @@ class TestTransactionLookup(unittest.TestCase):
         self.assertEqual(answer_upper.transaction_ids, answer_lower.transaction_ids)
         self.assertEqual(answer_upper.found, answer_lower.found)
 
+    def test_lookup_accepts_spaced_transaction_id(self):
+        answer = self.agent.ask("What about PAY 206?")
+        self.assertTrue(answer.supported)
+        self.assertEqual(answer.transaction_ids, ["PAY206"])
+
 
 # ===========================================================================
 # 2. Status questions

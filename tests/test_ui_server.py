@@ -393,6 +393,23 @@ class TestRetryEndpoint(unittest.TestCase):
         self.assertEqual(data["review"]["confidence"], 0.82)
         self.assertEqual(data["source_status"], "AI_RETRY_REQUIRED")
 
+    def test_ai_review_accepts_string_or_missing_confidence(self):
+        class ReviewLLM:
+            def complete(self, system, user):
+                return json.dumps({
+                    "decision": "REVIEW",
+                    "confidence": "0.82",
+                    "rationale": "Evidence reviewed.",
+                    "evidence": {"source": "stored_context"},
+                })
+
+        with patch.object(server_module, "GeminiFallbackClient", return_value=ReviewLLM()):
+            response = self.client.post("/api/transaction/PAY109/ai-review")
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["review"]["confidence"], 0.82)
+        self.assertEqual(data["review"]["adjustment"], {})
+
     def test_ai_review_failure_is_retryable_without_mutating_result(self):
         original = dict(server_module._index["PAY109"]["data"])
         with patch.object(server_module, "GeminiFallbackClient", side_effect=Exception("provider down")):

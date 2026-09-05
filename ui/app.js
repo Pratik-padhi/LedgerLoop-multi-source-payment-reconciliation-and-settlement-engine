@@ -595,7 +595,7 @@ async function requestAIReview(tid, button, box) {
     target.innerHTML = '<div class="evidence-block"><h4>' + heading + '</h4>' +
       (conf != null ? '<div class="confidence-bar" style="margin-bottom:0.4rem"><div class="confidence-fill ' + confCls + '" style="width:' + conf + '%"></div></div>' : '') +
       '<div class="ev-row"><span class="ek">Decision</span><span class="ev">' + esc(review.decision || "—") + '</span></div>' +
-      '<div class="ev-row"><span class="ek">Confidence</span><span class="ev">' + pct(conf) + '%</span></div>' +
+      '<div class="ev-row"><span class="ek">Confidence</span><span class="ev">' + (conf == null ? "Unavailable" : pct(conf) + "%") + '</span></div>' +
       '<div class="ev-row"><span class="ek">Rationale</span><span class="ev">' + esc(review.rationale || "—") + '</span></div>' +
       '<div class="ev-row"><span class="ek">Evidence</span><span class="ev">' + esc(JSON.stringify(review.evidence || {})) + '</span></div>' +
       '</div>';

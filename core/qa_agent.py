@@ -294,7 +294,7 @@ class ReconciliationIndex:
 
 # Patterns for extracting a transaction ID (PAY\d+, with optional trailing
 # letter for Stage 3 split sub-rows like PAY107B, and optional -REFUND suffix)
-_TXN_ID_RE = re.compile(r"\b(PAY\d+[A-Z]?(?:-REFUND)?)\b", re.IGNORECASE)
+_TXN_ID_RE = re.compile(r"\b(PAY\s*-?\s*\d+[A-Z]?(?:-REFUND)?)\b", re.IGNORECASE)
 
 # Rule keywords mapped to canonical rule constants
 _RULE_KEYWORDS: list[tuple[re.Pattern, str]] = [
@@ -320,7 +320,7 @@ _STATUS_KEYWORDS: list[tuple[re.Pattern, str]] = [
 def _extract_transaction_id(question: str) -> Optional[str]:
     """Extract the first PAY-style transaction ID from the question, uppercased."""
     m = _TXN_ID_RE.search(question)
-    return m.group(1).upper() if m else None
+    return re.sub(r"\s+", "", m.group(1)).upper() if m else None
 
 
 def _extract_rule(question: str) -> Optional[str]:

@@ -552,17 +552,26 @@ def api_ai_review(txn_id: str):
     try:
         raw = GeminiFallbackClient(structured=False).complete(system, user)
         review = LLMAdjudicator._parse_llm_json(raw)
-        confidence = review.get("confidence") if isinstance(review, dict) else None
-        if (
-            not isinstance(review, dict)
-            or isinstance(confidence, bool)
-            or not isinstance(confidence, (int, float))
-            or not 0.0 <= confidence <= 1.0
-            or not isinstance(review.get("rationale"), str)
-            or not isinstance(review.get("evidence", {}), dict)
-            or not isinstance(review.get("adjustment", {}), dict)
-        ):
+        if not isinstance(review, dict):
             return jsonify({"error": "Gemini returned an invalid AI review", "transaction_id": txn_id}), 422
+        confidence = review.get("confidence")
+        if isinstance(confidence, str):
+            try:
+                confidence = float(confidence.strip())
+            except ValueError:
+                confidence = None
+        if isinstance(confidence, bool) or (
+            confidence is not None
+            and (not isinstance(confidence, (int, float)) or not 0.0 <= confidence <= 1.0)
+        ):
+            confidence = None
+        review = {
+            "decision": str(review.get("decision") or "REVIEW"),
+            "confidence": confidence,
+            "rationale": str(review.get("rationale") or "No rationale returned by Gemini."),
+            "evidence": review.get("evidence") if isinstance(review.get("evidence"), dict) else {},
+            "adjustment": review.get("adjustment") if isinstance(review.get("adjustment"), dict) else {},
+        }
     except Exception:
         status = data.get("status")
         deterministic_decision = "MATCH" if status in ("MATCH", "MATCHED") else "HUMAN_REVIEW"
