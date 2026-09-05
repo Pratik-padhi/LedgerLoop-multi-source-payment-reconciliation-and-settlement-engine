@@ -45,7 +45,7 @@ from core.match_split import (
     SplitRule,
     SplitReason,
     run_stage3,
-    SPLIT_TOLERANCE,
+    SPLIT_TOLERANCE_DEFAULT as SPLIT_TOLERANCE,
     MAX_COMBO_SIZE,
     CANDIDATE_FILTER_LIMIT,
     _build_candidate_pool,

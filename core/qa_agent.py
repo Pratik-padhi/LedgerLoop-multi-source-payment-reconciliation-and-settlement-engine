@@ -101,6 +101,10 @@ from core.match_llm import (
     GeminiLLMClient,
     LLMUnavailableError,
 )
+from core.match_split import (
+    SplitResult,
+    SplitStatus,
+)
 
 
 # ===========================================================================
@@ -190,15 +194,23 @@ class ReconciliationIndex:
         tier1_results: list[Tier1Result],
         tier2_results: list[Tier2Result],
         tier3_results: list[Tier3Result],
+        stage3_results: Optional[list[SplitResult]] = None,
     ):
         # Index each tier independently so the agent can answer tier-specific
         # filter questions (e.g. "which transactions are HUMAN_REVIEW").
         self._t1: dict[str, Tier1Result] = {r.transaction_id: r for r in tier1_results}
         self._t2: dict[str, Tier2Result] = {r.transaction_id: r for r in tier2_results}
         self._t3: dict[str, Tier3Result] = {r.transaction_id: r for r in tier3_results}
+        self._s3: dict[str, SplitResult] = {
+            r.transaction_id: r for r in (stage3_results or [])
+        }
 
         # Build a flat authoritative view: transaction_id → best result dict
         # (serialised to plain dict so we never mutate the originals).
+        # Priority: Stage 3 > Tier 3 > Tier 2 (matched) > Tier 1 (matched).
+        # Stage 3 is the split / multi-payment / partial pass that only runs on
+        # Tier 3 residue, so its decision is authoritative over Tier 3 for those
+        # transactions it evaluated.
         self._authoritative: dict[str, dict] = {}
         for r in tier1_results:
             self._authoritative[r.transaction_id] = {"tier": "TIER_1", "data": r.to_dict()}
@@ -207,6 +219,8 @@ class ReconciliationIndex:
                 self._authoritative[r.transaction_id] = {"tier": "TIER_2", "data": r.to_dict()}
         for r in tier3_results:
             self._authoritative[r.transaction_id] = {"tier": "TIER_3", "data": r.to_dict()}
+        for r in stage3_results or []:
+            self._authoritative[r.transaction_id] = {"tier": "STAGE_3", "data": r.to_dict()}
 
         # Rule → transaction_id list (for filter-by-rule queries)
         self._by_rule: dict[str, list[str]] = {}
@@ -217,6 +231,9 @@ class ReconciliationIndex:
             if r.rule:
                 self._by_rule.setdefault(r.rule, []).append(r.transaction_id)
         for r in tier3_results:
+            if r.rule:
+                self._by_rule.setdefault(r.rule, []).append(r.transaction_id)
+        for r in stage3_results or []:
             if r.rule:
                 self._by_rule.setdefault(r.rule, []).append(r.transaction_id)
 
@@ -377,6 +394,46 @@ def _format_rule(rule: Optional[str]) -> str:
     return _RULE_LABELS.get(rule, rule)
 
 
+def _is_stage3(d: dict) -> bool:
+    """Detect a Stage 3 (split / multi-payment) result dict by its shape."""
+    return "bank_row_ids" in d and "settlement" in d
+
+
+def _format_money(value) -> str:
+    """Format a monetary field for a human-readable line (INR, 2 dp)."""
+    if value is None:
+        return "—"
+    try:
+        return f"₹{float(value):,.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _stage3_summary_lines(d: dict) -> list[str]:
+    """Human-readable lines specific to a Stage 3 split/multi-payment result."""
+    lines: list[str] = []
+    bank_ids = d.get("bank_row_ids") or []
+    lines.append(f"Bank row(s): {', '.join(bank_ids) if bank_ids else '(none)'}")
+    if d.get("received") is not None:
+        lines.append(f"Received: {_format_money(d.get('received'))}")
+    if d.get("outstanding") is not None:
+        lines.append(f"Outstanding: {_format_money(d.get('outstanding'))}")
+    if d.get("confidence") is not None:
+        lines.append(f"Confidence: {d.get('confidence')}")
+    settlement = d.get("settlement") or {}
+    if settlement:
+        lines.append(
+            "Settlement: "
+            f"gross={_format_money(settlement.get('gross_amount'))} "
+            f"gst={_format_money(settlement.get('gst_amount'))} "
+            f"tds={_format_money(settlement.get('tds_amount'))} "
+            f"fees={_format_money(settlement.get('total_fee_amount'))} "
+            f"expected_net={_format_money(settlement.get('expected_net_amount'))} "
+            f"actual_bank={_format_money(settlement.get('actual_bank_amount'))}"
+        )
+    return lines
+
+
 def _compose_lookup_answer(txn_id: str, entry: dict) -> str:
     """Plain-text summary of everything we know about a transaction."""
     d = entry["data"]
@@ -394,9 +451,17 @@ def _compose_lookup_answer(txn_id: str, entry: dict) -> str:
         f"Status:      {status}",
         f"Rule:        {rule}",
         f"Reason:      {reason}",
-        f"Matched records: "
-        + ", ".join(f"{k}={v}" for k, v in matched.items() if v),
     ]
+    if _is_stage3(d):
+        # Split / multi-payment / partial shape: bank rows + settlement.
+        lines.append(f"Matched records: gateway={d.get('gateway_row_id')}, "
+                     f"ledger={d.get('ledger_row_id') or '—'}")
+        lines.extend(_stage3_summary_lines(d))
+    else:
+        lines.append(
+            "Matched records: "
+            + ", ".join(f"{k}={v}" for k, v in matched.items() if v)
+        )
     if evidence:
         ev_parts = []
         for k, v in evidence.items():
@@ -414,6 +479,22 @@ def _compose_why_answer(txn_id: str, entry: dict) -> str:
     rule = _format_rule(d.get("rule"))
     reason = d.get("reason") or "—"
     evidence = d.get("evidence", {})
+
+    if _is_stage3(d):
+        explanation = f"{txn_id} is {status} (Stage 3 split/multi-payment pass) via rule: {rule}."
+        explanation += f"  Reason: {reason}."
+        if status == SplitStatus.MATCH:
+            bank_ids = ", ".join(d.get("bank_row_ids") or [])
+            explanation += f"  It is settled by bank row(s): {bank_ids}."
+        elif status == SplitStatus.PARTIAL:
+            explanation += (
+                f"  Received {_format_money(d.get('received'))} of "
+                f"{_format_money(d.get('expected_net'))} expected; "
+                f"outstanding {_format_money(d.get('outstanding'))}."
+            )
+        if d.get("confidence") is not None:
+            explanation += f"  Confidence: {d.get('confidence')}."
+        return explanation
 
     if status == T3_MATCH:
         explanation = f"PAY{txn_id.lstrip('PAY')} was matched" if txn_id.startswith("PAY") else f"{txn_id} was matched"
@@ -442,6 +523,20 @@ def _compose_evidence_answer(txn_id: str, entry: dict) -> str:
     rule = _format_rule(d.get("rule"))
     matched = d.get("matched_records", {})
     llm_rec = d.get("llm_recommendation")
+
+    if _is_stage3(d):
+        lines = [f"Evidence for {txn_id} (rule: {rule}, status: {d.get('status')}):"]
+        lines.extend(_stage3_summary_lines(d))
+        for k, v in evidence.items():
+            if v is not None:
+                lines.append(f"  {k}: {v}")
+        if d.get("llm_recommendation"):
+            rec = d.get("llm_recommendation")
+            lines.append(
+                f"  LLM recommendation (for audit): decision={rec.get('decision')}, "
+                f"bank_row_ids={rec.get('bank_row_ids')}"
+            )
+        return "\n".join(lines)
 
     if not evidence and not matched:
         return f"No structured evidence is recorded for {txn_id}."
@@ -817,6 +912,7 @@ def build_qa_agent(
     tier1_results: list[Tier1Result],
     tier2_results: list[Tier2Result],
     tier3_results: list[Tier3Result],
+    stage3_results: Optional[list[SplitResult]] = None,
     llm_client=None,
     use_llm_for_explanations: bool = False,
 ) -> SettlementQAAgent:
@@ -827,10 +923,16 @@ def build_qa_agent(
         r1, _, matcher = run_tier1(data_dir="data", return_matcher=True)
         r2, _ = run_tier2(get_residue(r1), matcher)
         r3, _ = run_tier3(r2, matcher, llm_client=GeminiLLMClient())
-        agent = build_qa_agent(r1, r2, r3)
+        agent = build_qa_agent(r1, r2, r3, stage3_results=r4)
         answer = agent.ask("What happened to PAY109?")
+
+    `stage3_results` (optional) is the Stage 3 split / multi-payment pass run on
+    Tier 3 residue; when supplied its decisions are authoritative over Tier 3
+    for the transactions it evaluated.
     """
-    index = ReconciliationIndex(tier1_results, tier2_results, tier3_results)
+    index = ReconciliationIndex(
+        tier1_results, tier2_results, tier3_results, stage3_results
+    )
     return SettlementQAAgent(
         index,
         llm_client=llm_client,

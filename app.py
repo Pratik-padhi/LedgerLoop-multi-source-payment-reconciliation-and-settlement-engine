@@ -49,6 +49,12 @@ from core.match_llm import (
     STATUS_UNRESOLVED,
     STATUS_AI_RETRY_REQUIRED,
 )
+from core.match_split import (
+    run_stage3,
+    retry_stage3_transaction,
+    SplitStatus,
+    SplitResult,
+)
 from core.qa_agent import build_qa_agent
 
 # ---------------------------------------------------------------------------
@@ -58,17 +64,62 @@ from core.qa_agent import build_qa_agent
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 
+def _consumed_bank_ids(r1, r2, r3) -> set:
+    """Bank source_row_ids already claimed by one-to-one matching (Tier 1/2/3)."""
+    consumed: set[str] = set()
+    for results in (r1, r2, r3):
+        for r in results:
+            bank_id = getattr(r, "matched_records", {}).get("bank")
+            if bank_id:
+                consumed.add(bank_id)
+    return consumed
+
+
+def _stage3_pending_txns(r3) -> list[dict]:
+    """Build Stage 3 pending transactions from the Tier 3 residue.
+
+    Stage 3 is the split / multi-payment / partial pass. It runs only on
+    transactions Tier 3 could not resolve one-to-one (AI_RETRY_REQUIRED,
+    HUMAN_REVIEW, UNRESOLVED) — never on anything Tier 3 already matched.
+    """
+    pending = []
+    for r in r3:
+        if r.status != STATUS_MATCH:
+            pending.append({
+                "transaction_id": r.transaction_id,
+                "gateway_row_id": r.matched_records.get("gateway"),
+                "ledger_row_id": r.matched_records.get("ledger"),
+            })
+    return pending
+
+
 def _run_pipeline():
-    """Execute the full reconciliation pipeline and return all results."""
+    """Execute the full reconciliation pipeline and return all results.
+
+    Returns an extra pair (r4, summary4) for the Stage 3 split/multi-payment
+    pass over the Tier 3 residue.
+    """
     r1, summary1, matcher = run_tier1(data_dir=_DATA_DIR, return_matcher=True)
     residue1 = get_residue(r1)
     r2, summary2 = run_tier2(residue1, matcher)
     r3, summary3 = run_tier3(r2, matcher)   # uses env LLM_PROVIDER / GEMINI_API_KEY if set
-    return r1, summary1, r2, summary2, r3, summary3, matcher
+
+    # Stage 3: split / multi-payment reconciliation over Tier 3 residue.
+    already_consumed = _consumed_bank_ids(r1, r2, r3)
+    pending_txns = _stage3_pending_txns(r3)
+    r4, summary4 = run_stage3(
+        matcher.gateway_records,
+        matcher.bank_records,
+        matcher.ledger_records,
+        already_consumed,
+        pending_txns,
+        llm_client=None,   # deterministic only at startup; ambiguous → AI_RETRY_REQUIRED
+    )
+    return r1, summary1, r2, summary2, r3, summary3, r4, summary4, matcher
 
 
 print("LedgerLoop: running reconciliation pipeline…", flush=True)
-_r1, _summary1, _r2, _summary2, _r3, _summary3, _matcher = _run_pipeline()
+_r1, _summary1, _r2, _summary2, _r3, _summary3, _r4, _summary4, _matcher = _run_pipeline()
 print(
     f"  Tier 1: {_summary1.matched_count} matched / "
     f"{_summary1.partial_match_count} partial / "
@@ -85,10 +136,30 @@ print(
     f"{_summary3.unresolved_count} unresolved",
     flush=True,
 )
+print(
+    f"  Stage 3: {_summary4.match_count} matched / "
+    f"{_summary4.partial_count} partial / "
+    f"{_summary4.ambiguous_count} ambiguous / "
+    f"{_summary4.ai_retry_count} ai-retry / "
+    f"{_summary4.unresolved_count} unresolved "
+    f"over {_summary4.total_evaluated} pending",
+    flush=True,
+)
+
+# ---------------------------------------------------------------------------
+# Bank rows claimed by Stage 3 MATCH results — needed to keep per-transaction
+# retry from re-using rows another split already consumed.
+# ---------------------------------------------------------------------------
+
+_stage3_consumed: set[str] = set()
+for r in _r4:
+    if r.status == SplitStatus.MATCH:
+        for bank_id in r.bank_row_ids:
+            _stage3_consumed.add(bank_id)
 
 # ---------------------------------------------------------------------------
 # Build the authoritative result index for per-transaction lookups.
-# Priority: Tier 3 > Tier 2 (matched) > Tier 1.
+# Priority: Stage 3 > Tier 3 > Tier 2 (matched) > Tier 1.
 # ---------------------------------------------------------------------------
 
 _index: dict[str, dict] = {}
@@ -103,12 +174,15 @@ for r in _r2:
 for r in _r3:
     _index[r.transaction_id] = {"tier": "TIER_3", "data": r.to_dict()}
 
+for r in _r4:
+    _index[r.transaction_id] = {"tier": "STAGE_3", "data": r.to_dict()}
+
 # ---------------------------------------------------------------------------
 # Settlement Q&A agent (read-only wrapper over pipeline results)
 # ---------------------------------------------------------------------------
 
 _qa_agent = build_qa_agent(
-    _r1, _r2, _r3,
+    _r1, _r2, _r3, _r4,
     use_llm_for_explanations=False,   # deterministic answers only; prose LLM off by default
 )
 
@@ -149,6 +223,9 @@ def api_overview():
     # Tier 3 final stats (from Tier-2 residue)
     t3 = _summary3.to_dict()
 
+    # Stage 3 split / multi-payment stats (from Tier-3 residue)
+    t4 = _summary4.to_dict()
+
     # Aggregate final status counts across all tiers
     # (every transaction appears in _index under its authoritative tier)
     status_counts: dict[str, int] = {}
@@ -174,6 +251,7 @@ def api_overview():
         "tier1_summary": t1,
         "tier2_summary": t2,
         "tier3_summary": t3,
+        "stage3_summary": t4,
         "llm_calls_made": t3["llm_calls_made"],
         "llm_recommendations_validated": t3["llm_recommendations_validated"],
         "llm_recommendations_rejected": t3["llm_recommendations_rejected"],
@@ -190,7 +268,11 @@ def api_exceptions():
     for tid, entry in sorted(_index.items()):
         d = entry["data"]
         status = d.get("status", "UNKNOWN")
-        if status in (STATUS_HUMAN_REVIEW, STATUS_UNRESOLVED, STATUS_AI_RETRY_REQUIRED):
+        if status in (
+            STATUS_HUMAN_REVIEW, STATUS_UNRESOLVED, STATUS_AI_RETRY_REQUIRED,
+            SplitStatus.AMBIGUOUS, SplitStatus.AI_RETRY_REQUIRED,
+            SplitStatus.PARTIAL, SplitStatus.UNRESOLVED,
+        ):
             exceptions.append({
                 "transaction_id": tid,
                 "tier": entry["tier"],
@@ -198,6 +280,9 @@ def api_exceptions():
                 "rule": d.get("rule"),
                 "reason": d.get("reason"),
                 "matched_records": d.get("matched_records", {}),
+                "bank_row_ids": d.get("bank_row_ids", []),
+                "received": d.get("received"),
+                "outstanding": d.get("outstanding"),
                 "evidence": d.get("evidence", {}),
                 "llm_consulted": d.get("llm_consulted", False),
             })
@@ -256,6 +341,73 @@ def api_retry_llm(txn_id: str):
 
     response = {"transaction_id": txn_id, "tier": "TIER_3", **result_data}
     if result.status == STATUS_AI_RETRY_REQUIRED:
+        return jsonify(response), 503
+    return jsonify(response)
+
+
+@app.route("/api/transaction/<txn_id>/retry-stage3", methods=["POST"])
+def api_retry_stage3(txn_id: str):
+    """Retry Gemini for one existing Stage 3 AI_RETRY_REQUIRED transaction only.
+
+    Re-runs Stage 3's deterministic-then-LLM adjudication for this single
+    transaction with a fresh Gemini client, against the current consumed
+    bank-row state. Python stays authoritative for candidate availability,
+    uniqueness and arithmetic; Gemini only adjudicates genuinely ambiguous
+    combinations. The existing Tier 3 retry workflow is untouched.
+    """
+    global _qa_agent
+
+    txn_id = txn_id.upper()
+    entry = _index.get(txn_id)
+    if entry is None:
+        return jsonify({"error": f"Transaction '{txn_id}' not found"}), 404
+    if entry["tier"] != "STAGE_3" or entry["data"].get("status") != SplitStatus.AI_RETRY_REQUIRED:
+        return jsonify({
+            "error": "Only Stage 3 AI_RETRY_REQUIRED transactions can be retried",
+            "transaction_id": txn_id,
+            "tier": entry["tier"],
+            "status": entry["data"].get("status"),
+        }), 409
+
+    # Reconstruct the pending_txn from the Tier 3 residue (source of truth).
+    pending_txn = None
+    for r in _r3:
+        if r.transaction_id == txn_id:
+            pending_txn = {
+                "transaction_id": r.transaction_id,
+                "gateway_row_id": r.matched_records.get("gateway"),
+                "ledger_row_id": r.matched_records.get("ledger"),
+            }
+            break
+    if pending_txn is None:
+        return jsonify({"error": f"No Tier 3 residue found for '{txn_id}'"}), 404
+
+    result = retry_stage3_transaction(
+        txn_id,
+        pending_txn,
+        _matcher.gateway_records,
+        _matcher.bank_records,
+        _matcher.ledger_records,
+        _consumed_bank_ids(_r1, _r2, _r3),
+        _stage3_consumed,
+        GeminiLLMClient(),
+    )
+    result_data = result.to_dict()
+    for i, previous in enumerate(_r4):
+        if previous.transaction_id == txn_id:
+            _r4[i] = result
+            break
+    _index[txn_id] = {"tier": "STAGE_3", "data": result_data}
+    if result.status == SplitStatus.MATCH:
+        for bank_id in result.bank_row_ids:
+            _stage3_consumed.add(bank_id)
+    _qa_agent = build_qa_agent(
+        _r1, _r2, _r3, _r4,
+        use_llm_for_explanations=False,
+    )
+
+    response = {"transaction_id": txn_id, "tier": "STAGE_3", **result_data}
+    if result.status == SplitStatus.AI_RETRY_REQUIRED:
         return jsonify(response), 503
     return jsonify(response)
 

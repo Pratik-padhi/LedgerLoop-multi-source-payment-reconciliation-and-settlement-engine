@@ -85,6 +85,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -116,7 +117,11 @@ CANDIDATE_FILTER_LIMIT: int = 20
 MAX_COMBO_SIZE: int = 4
 
 # Arithmetic tolerance for a split sum vs expected_net (positive Decimal INR).
-SPLIT_TOLERANCE = Decimal("5.00")
+# Wider than Tier 2's ₹0.05 per-row tolerance because each split credit may
+# carry its own small independent rounding difference; a ₹5.00 gap on a
+# ₹6400 transaction is 0.078%, well within reasonable settlement variance.
+# Configurable per run; default retained for backwards compatibility.
+SPLIT_TOLERANCE_DEFAULT = Decimal("5.00")
 
 # A partial payment is recognised when available bank total is at least this
 # fraction of expected_net. Below this threshold the match is UNRESOLVED
@@ -224,7 +229,7 @@ def _bank_amount(record: CanonicalRecord) -> Decimal:
     return Decimal(str(record.amount.normalized))
 
 
-def _amounts_close(a: Decimal, b: Decimal, tol: Decimal = SPLIT_TOLERANCE) -> bool:
+def _amounts_close(a: Decimal, b: Decimal, tol: Decimal = SPLIT_TOLERANCE_DEFAULT) -> bool:
     return abs(a - b) <= tol
 
 
@@ -294,7 +299,7 @@ def _build_candidate_pool(
         # and at least 1% of expected_net (avoids tiny noise rows)
         if expected_net <= 0:
             return False
-        return amt > 0 and amt <= (expected_net + SPLIT_TOLERANCE) and amt >= (expected_net * Decimal("0.01"))
+        return amt > 0 and amt <= (expected_net + SPLIT_TOLERANCE_DEFAULT) and amt >= (expected_net * Decimal("0.01"))
 
     # Prefer reference-evidenced rows
     ref_pool = [b for b in available if _has_reference_evidence(b)]
@@ -332,6 +337,7 @@ class SplitMatcher:
         llm_client: Optional[LLMClient] = None,
         candidate_filter_limit: int = CANDIDATE_FILTER_LIMIT,
         max_combo_size: int = MAX_COMBO_SIZE,
+        split_tolerance: Decimal = SPLIT_TOLERANCE_DEFAULT,
     ):
         self.gw_by_id = {r.source_row_id: r for r in gateway_records}
         self.bank_by_id = {r.source_row_id: r for r in bank_records}
@@ -342,6 +348,7 @@ class SplitMatcher:
         self.llm_client = llm_client
         self.candidate_filter_limit = candidate_filter_limit
         self.max_combo_size = max_combo_size
+        self.split_tolerance = split_tolerance
 
         self.llm_calls_made = 0
         self.llm_validated = 0
@@ -370,9 +377,20 @@ class SplitMatcher:
         if gross is None:
             return Decimal("0"), None
 
+        # A negative gateway gross is a refund transaction. Stage 3 is the
+        # split / multi-payment reconciliation pass for *payment* transactions;
+        # refunds are Tier 3's REFUND_LINKED_NET_AMOUNT domain and are not
+        # settled by a candidate pool of positive bank credits. Return the
+        # (negative) gross unchanged so run_stage3's `expected_net <= 0` branch
+        # classifies it UNRESOLVED / NO_CANDIDATES instead of feeding a
+        # negative amount into the accounting layer (which would raise).
+        gross_dec = Decimal(str(gross))
+        if gross_dec < 0:
+            return gross_dec, None
+
         if ledger is None:
             # No ledger context: expected = gross (no adjustments known)
-            return Decimal(str(gross)), None
+            return gross_dec, None
 
         breakdown = accounting_model.build_settlement_from_ledger(
             gross, ledger,
@@ -382,7 +400,7 @@ class SplitMatcher:
                 "ledger": ledger.source_row_id,
             },
         )
-        exp = Decimal(str(breakdown.expected_net_amount)) if breakdown.expected_net_amount is not None else Decimal(str(gross))
+        exp = Decimal(str(breakdown.expected_net_amount)) if breakdown.expected_net_amount is not None else gross_dec
         return exp, breakdown.to_dict()
 
     # -- combination search -------------------------------------------------
@@ -394,7 +412,7 @@ class SplitMatcher:
     ) -> list[tuple[CanonicalRecord, ...]]:
         """
         Find all combinations (size 2..max_combo_size) of available candidate
-        rows whose bank amount sum is within SPLIT_TOLERANCE of expected_net.
+        rows whose bank amount sum is within the configured split tolerance of expected_net.
 
         Only considers rows that are still available at call time.
         Returns every valid combination found — caller detects ambiguity.
@@ -405,7 +423,7 @@ class SplitMatcher:
         for size in range(2, min(self.max_combo_size, len(available)) + 1):
             for combo in combinations(available, size):
                 total = sum(_bank_amount(b) for b in combo)
-                if _amounts_close(total, expected_net):
+                if _amounts_close(total, expected_net, self.split_tolerance):
                     valid.append(combo)
 
         return valid
@@ -475,7 +493,7 @@ class SplitMatcher:
           - all ids must be in the pre-vetted candidate set
           - all ids must still be available
           - no duplicates
-          - arithmetic must hold within SPLIT_TOLERANCE
+          - arithmetic must hold within configured split_tolerance
         """
         if self.llm_client is None:
             return None, None, SplitReason.LLM_UNAVAILABLE
@@ -571,7 +589,7 @@ class SplitMatcher:
 
         # Re-compute arithmetic independently (never trust LLM's stated sum)
         total = sum(_bank_amount(self.bank_by_id[i]) for i in ids)
-        if not _amounts_close(total, expected_net):
+        if not _amounts_close(total, expected_net, self.split_tolerance):
             return None, SplitReason.ARITHMETIC_MISMATCH
 
         return ids, None
@@ -660,7 +678,7 @@ class SplitMatcher:
                     "bank_credit_total": float(total),
                     "bank_row_ids": winning_ids,
                     "combination_size": len(winning),
-                    "tolerance_used": float(SPLIT_TOLERANCE),
+                    "tolerance_used": float(self.split_tolerance),
                 },
                 llm_consulted=False,
             )
@@ -852,6 +870,7 @@ def run_stage3(
     llm_client: Optional[LLMClient] = None,
     candidate_filter_limit: int = CANDIDATE_FILTER_LIMIT,
     max_combo_size: int = MAX_COMBO_SIZE,
+    split_tolerance: Decimal = SPLIT_TOLERANCE_DEFAULT,
 ) -> tuple[list[SplitResult], SplitSummary]:
     """
     Run Stage 3 generic split / multi-payment reconciliation.
@@ -869,10 +888,15 @@ def run_stage3(
         llm_client:             optional LLMClient for ambiguous adjudication
         candidate_filter_limit: override CANDIDATE_FILTER_LIMIT per run
         max_combo_size:         override MAX_COMBO_SIZE per run
+        split_tolerance:        arithmetic tolerance for split sum vs expected_net
 
     Returns:
         (results, summary) — one SplitResult per pending_txns entry.
     """
+    # Two-pass architecture to handle competing gateways fairly:
+    # Pass 1: compute all valid combinations for all transactions (no consumption)
+    # Pass 2: detect conflicts, resolve, then consume rows
+
     matcher = SplitMatcher(
         gateway_records=gateway_records,
         bank_records=bank_records,
@@ -881,14 +905,237 @@ def run_stage3(
         llm_client=llm_client,
         candidate_filter_limit=candidate_filter_limit,
         max_combo_size=max_combo_size,
+        split_tolerance=split_tolerance,
     )
 
+    # Pass 1: find all valid combinations for all transactions
+    txn_combinations: dict[str, dict] = {}
+    for txn in pending_txns:
+        txn_id = txn["transaction_id"]
+        gw_row_id = txn["gateway_row_id"]
+        ledger_row_id = txn.get("ledger_row_id")
+
+        gw = matcher.gw_by_id[gw_row_id]
+        ledger = matcher.ledger_by_id.get(ledger_row_id) if ledger_row_id else None
+        expected_net, settlement_dict = matcher._expected_net(gw, ledger)
+
+        if expected_net <= 0:
+            txn_combinations[txn_id] = {
+                "txn": txn,
+                "gw": gw,
+                "ledger": ledger,
+                "expected_net": expected_net,
+                "settlement_dict": settlement_dict,
+                "candidates": [],
+                "valid_combos": [],
+                "partial": None,
+                "filter_reason": "non-positive expected_net",
+                "status": SplitStatus.UNRESOLVED,
+                "reason": SplitReason.NO_CANDIDATES,
+            }
+            continue
+
+        candidates, filter_reason = _build_candidate_pool(
+            gw, ledger, matcher.all_bank, matcher._consumed, expected_net,
+            matcher.candidate_filter_limit,
+        )
+
+        if filter_reason == SplitReason.CANDIDATE_LIMIT_EXCEEDED:
+            txn_combinations[txn_id] = {
+                "txn": txn,
+                "gw": gw,
+                "ledger": ledger,
+                "expected_net": expected_net,
+                "settlement_dict": settlement_dict,
+                "candidates": candidates,
+                "valid_combos": [],
+                "partial": None,
+                "filter_reason": filter_reason,
+                "status": SplitStatus.UNRESOLVED,
+                "reason": SplitReason.CANDIDATE_LIMIT_EXCEEDED,
+            }
+            continue
+
+        if not candidates:
+            txn_combinations[txn_id] = {
+                "txn": txn,
+                "gw": gw,
+                "ledger": ledger,
+                "expected_net": expected_net,
+                "settlement_dict": settlement_dict,
+                "candidates": [],
+                "valid_combos": [],
+                "partial": None,
+                "filter_reason": "no candidates",
+                "status": SplitStatus.UNRESOLVED,
+                "reason": SplitReason.NO_CANDIDATES,
+            }
+            continue
+
+        valid_combos = matcher._find_valid_combinations(candidates, expected_net)
+        partial = None
+        if not valid_combos:
+            partial = matcher._find_partial_combination(candidates, expected_net)
+
+        txn_combinations[txn_id] = {
+            "txn": txn,
+            "gw": gw,
+            "ledger": ledger,
+            "expected_net": expected_net,
+            "settlement_dict": settlement_dict,
+            "candidates": candidates,
+            "valid_combos": valid_combos,
+            "partial": partial,
+            "filter_reason": "",
+            "status": None,
+            "reason": None,
+        }
+
+    # Pass 2: detect conflicts among transactions with single valid combo
+    combo_to_txns: dict[frozenset, list[str]] = defaultdict(list)
+    for txn_id, data in txn_combinations.items():
+        if len(data["valid_combos"]) == 1:
+            combo_ids = frozenset(b.source_row_id for b in data["valid_combos"][0])
+            combo_to_txns[combo_ids].append(txn_id)
+
+    conflicted_combos: set[frozenset] = set()
+    for combo_ids, txn_ids in combo_to_txns.items():
+        if len(txn_ids) > 1:
+            conflicted_combos.add(combo_ids)
+
+    # Mark conflicted transactions as AMBIGUOUS
+    for txn_id, data in txn_combinations.items():
+        if data["status"] is not None:
+            continue
+        if len(data["valid_combos"]) == 1:
+            combo_ids = frozenset(b.source_row_id for b in data["valid_combos"][0])
+            if combo_ids in conflicted_combos:
+                data["status"] = SplitStatus.AMBIGUOUS
+                data["reason"] = SplitReason.AMBIGUOUS_COMBINATIONS
+
+    # Pass 3: resolve each transaction in order
     results: list[SplitResult] = []
     for txn in pending_txns:
-        r = matcher.resolve(
-            txn_id=txn["transaction_id"],
-            gw_row_id=txn["gateway_row_id"],
-            ledger_row_id=txn.get("ledger_row_id"),
+        txn_id = txn["transaction_id"]
+        data = txn_combinations[txn_id]
+
+        if data["status"] is not None:
+            # Already determined (UNRESOLVED from pass 1, or AMBIGUOUS from conflict)
+            r = matcher._result(
+                txn_id, data["status"], None, data["reason"],
+                data["txn"]["gateway_row_id"], [], data["txn"].get("ledger_row_id"),
+                data["expected_net"], data["settlement_dict"],
+                evidence={
+                    "expected_net": float(data["expected_net"]),
+                    "valid_combination_count": len(data["valid_combos"]),
+                    "valid_combinations": [[b.source_row_id for b in c] for c in data["valid_combos"]],
+                },
+            )
+            results.append(r)
+            continue
+
+        if not data["valid_combos"]:
+            # No valid combos → try partial
+            if data["partial"] is not None:
+                r = matcher._try_partial(
+                    txn_id, data["txn"]["gateway_row_id"], data["txn"].get("ledger_row_id"),
+                    data["gw"], data["ledger"], data["candidates"],
+                    data["expected_net"], data["settlement_dict"],
+                )
+            else:
+                r = matcher._result(
+                    txn_id, SplitStatus.UNRESOLVED, None, SplitReason.INSUFFICIENT_PARTIAL,
+                    data["txn"]["gateway_row_id"], [], data["txn"].get("ledger_row_id"),
+                    data["expected_net"], data["settlement_dict"],
+                    evidence={
+                        "expected_net": float(data["expected_net"]),
+                        "candidate_count": len(data["candidates"]),
+                        "reason": "no plausible partial combination found",
+                    },
+                )
+            results.append(r)
+            continue
+
+        # Exactly one valid combo, not conflicted → deterministic MATCH
+        if len(data["valid_combos"]) == 1:
+            winning = list(data["valid_combos"][0])
+            winning_ids = [b.source_row_id for b in winning]
+            total = sum(_bank_amount(b) for b in winning)
+            final_settlement = matcher._settlement_with_bank(data["gw"], data["ledger"], float(total))
+            matcher._consume_all(winning_ids)
+
+            r = matcher._result(
+                txn_id, SplitStatus.MATCH, _rule_for_size(len(winning)),
+                SplitReason.FULL_SUM_MATCH,
+                data["txn"]["gateway_row_id"], winning_ids, data["txn"].get("ledger_row_id"),
+                data["expected_net"], final_settlement,
+                received=total, outstanding=None,
+                evidence={
+                    "expected_net": float(data["expected_net"]),
+                    "bank_credit_total": float(total),
+                    "bank_row_ids": winning_ids,
+                    "combination_size": len(winning),
+                    "tolerance_used": float(matcher.split_tolerance),
+                },
+                llm_consulted=False,
+            )
+            results.append(r)
+            continue
+
+        # Multiple valid combos → LLM adjudication
+        llm_ids, llm_rec, llm_reason = matcher._llm_adjudicate_ambiguous(
+            txn_id, data["gw"], data["ledger"], data["candidates"],
+            data["valid_combos"], data["expected_net"]
+        )
+        llm_was_called = matcher.llm_calls_made > 0
+
+        if llm_ids:
+            total = sum(_bank_amount(matcher.bank_by_id[bid]) for bid in llm_ids)
+            final_settlement = matcher._settlement_with_bank(data["gw"], data["ledger"], float(total))
+            matcher._consume_all(llm_ids)
+
+            r = matcher._result(
+                txn_id, SplitStatus.MATCH, _rule_for_size(len(llm_ids)),
+                SplitReason.LLM_RECOMMENDATION_VALIDATED,
+                data["txn"]["gateway_row_id"], llm_ids, data["txn"].get("ledger_row_id"),
+                data["expected_net"], final_settlement,
+                received=total, outstanding=None,
+                evidence={
+                    "expected_net": float(data["expected_net"]),
+                    "bank_credit_total": float(total),
+                    "bank_row_ids": llm_ids,
+                    "combination_size": len(llm_ids),
+                    "ambiguous_combo_count": len(data["valid_combos"]),
+                    "llm_evidence": llm_rec.get("evidence", {}) if llm_rec else {},
+                },
+                llm_consulted=True,
+                llm_recommendation=llm_rec,
+                confidence=llm_rec.get("confidence") if llm_rec else None,
+            )
+            results.append(r)
+            continue
+
+        # LLM unavailable or rejected
+        if llm_reason == SplitReason.LLM_UNAVAILABLE:
+            status = SplitStatus.AI_RETRY_REQUIRED
+            reason = SplitReason.AI_RETRY_REQUIRED
+        else:
+            status = SplitStatus.AMBIGUOUS
+            reason = SplitReason.AMBIGUOUS_COMBINATIONS
+
+        all_combo_ids = [[b.source_row_id for b in c] for c in data["valid_combos"]]
+        r = matcher._result(
+            txn_id, status, None, reason,
+            data["txn"]["gateway_row_id"], [], data["txn"].get("ledger_row_id"),
+            data["expected_net"], data["settlement_dict"],
+            evidence={
+                "expected_net": float(data["expected_net"]),
+                "valid_combination_count": len(data["valid_combos"]),
+                "valid_combinations": all_combo_ids,
+                "llm_recommendation": llm_rec,
+            },
+            llm_consulted=llm_was_called,
+            llm_recommendation=llm_rec,
         )
         results.append(r)
 
@@ -910,3 +1157,43 @@ def run_stage3(
         llm_rejected=matcher.llm_rejected,
     )
     return results, summary
+
+
+def retry_stage3_transaction(
+    txn_id: str,
+    pending_txn: dict,
+    gateway_records: list[CanonicalRecord],
+    bank_records: list[CanonicalRecord],
+    ledger_records: list[CanonicalRecord],
+    already_consumed: set[str],
+    stage3_consumed: set[str],
+    llm_client: Optional[LLMClient],
+    split_tolerance: Decimal = SPLIT_TOLERANCE_DEFAULT,
+) -> SplitResult:
+    """Re-adjudicate ONE Stage 3 AI_RETRY_REQUIRED transaction with a client.
+
+    This deliberately does not rerun normalization, Tier 1/2/3, or the rest of
+    Stage 3. It rebuilds a fresh SplitMatcher seeded with the *current*
+    consumed bank-row state (Tier 1/2/3 one-to-one claims plus bank rows already
+    claimed by other Stage 3 MATCH results) and a supplied LLM client, then
+    resolves exactly this transaction via the normal deterministic-then-LLM
+    path (`SplitMatcher.resolve`). The result is a brand-new SplitResult and
+    nothing is mutated on any shared matcher.
+
+    The retried transaction must be one whose prior disposition was
+    AI_RETRY_REQUIRED (LLM was unavailable); all arithmetic, candidate
+    availability and uniqueness validation remain Python-authoritative.
+    """
+    matcher = SplitMatcher(
+        gateway_records=gateway_records,
+        bank_records=bank_records,
+        ledger_records=ledger_records,
+        already_consumed=already_consumed | stage3_consumed,
+        llm_client=llm_client,
+        split_tolerance=split_tolerance,
+    )
+    return matcher.resolve(
+        txn_id,
+        pending_txn["gateway_row_id"],
+        pending_txn.get("ledger_row_id"),
+    )
