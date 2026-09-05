@@ -13,4 +13,4 @@ services:
       - key: LLM_PROVIDER
         value: gemini
       - key: GEMINI_MODEL
-        value: gemini-3.6-flash
+        value: default
