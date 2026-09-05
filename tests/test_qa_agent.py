@@ -803,6 +803,15 @@ class TestIntentClassifier(unittest.TestCase):
         self.assertEqual(intent, INTENT_LOOKUP)
         self.assertEqual(extras["transaction_id"], "PAY109")
 
+    def test_lookup_intent_split_subrow_suffix(self):
+        """Stage 3 split sub-rows carry a trailing letter (e.g. PAY107B).
+        The transaction ID extractor must accept them, not classify as
+        UNSUPPORTED."""
+        for question in ("What happened to PAY107B?", "Show PAY107B"):
+            intent, extras = classify_intent(question)
+            self.assertEqual(intent, INTENT_LOOKUP, f"unexpected intent for {question!r}")
+            self.assertEqual(extras["transaction_id"], "PAY107B")
+
     def test_why_intent(self):
         intent, extras = classify_intent("Why is PAY109 matched?")
         self.assertEqual(intent, INTENT_WHY)

@@ -290,8 +290,9 @@ class ReconciliationIndex:
 # Intent classifier — deterministic keyword / regex approach
 # ===========================================================================
 
-# Patterns for extracting a transaction ID (PAY\d+, with optional -REFUND suffix)
-_TXN_ID_RE = re.compile(r"\b(PAY\d+(?:-REFUND)?)\b", re.IGNORECASE)
+# Patterns for extracting a transaction ID (PAY\d+, with optional trailing
+# letter for Stage 3 split sub-rows like PAY107B, and optional -REFUND suffix)
+_TXN_ID_RE = re.compile(r"\b(PAY\d+[A-Z]?(?:-REFUND)?)\b", re.IGNORECASE)
 
 # Rule keywords mapped to canonical rule constants
 _RULE_KEYWORDS: list[tuple[re.Pattern, str]] = [

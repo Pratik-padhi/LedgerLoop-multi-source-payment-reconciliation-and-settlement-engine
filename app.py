@@ -315,18 +315,26 @@ def api_retry_llm(txn_id: str):
     entry = _index.get(txn_id)
     if entry is None:
         return jsonify({"error": f"Transaction '{txn_id}' not found"}), 404
-    if entry["data"].get("status") != STATUS_AI_RETRY_REQUIRED:
+    # Tier guard: only a true TIER_3 entry may be retried here. A Stage 3
+    # AI_RETRY_REQUIRED entry must go through /retry-stage3 — running Tier 3
+    # on a split transaction would overwrite its Stage 3 disposition.
+    if entry["tier"] != "TIER_3" or entry["data"].get("status") != STATUS_AI_RETRY_REQUIRED:
         return jsonify({
-            "error": "Only AI_RETRY_REQUIRED transactions can be retried",
+            "error": "Only TIER_3 AI_RETRY_REQUIRED transactions can be retried via /retry-llm",
             "transaction_id": txn_id,
+            "tier": entry["tier"],
             "status": entry["data"].get("status"),
         }), 409
 
+    # Seed the retry with every bank row already claimed by other Tier 1/2/3
+    # matches and by Stage 3 split Matches, so this retry can never re-offer
+    # a row another result has consumed (global one-to-one uniqueness).
     result = retry_tier3_transaction(
         txn_id,
         _r2,
         _matcher,
         GeminiLLMClient(),
+        already_consumed=_consumed_bank_ids(_r1, _r2, _r3) | _stage3_consumed,
     )
     result_data = result.to_dict()
     for index, previous in enumerate(_r3):
@@ -334,8 +342,9 @@ def api_retry_llm(txn_id: str):
             _r3[index] = result
             break
     _index[txn_id] = {"tier": "TIER_3", "data": result_data}
+    # Preserve Stage 3 results in the Q&A agent (like /retry-stage3 does).
     _qa_agent = build_qa_agent(
-        _r1, _r2, _r3,
+        _r1, _r2, _r3, _r4,
         use_llm_for_explanations=False,
     )
 

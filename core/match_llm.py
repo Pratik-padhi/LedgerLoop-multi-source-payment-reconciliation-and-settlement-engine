@@ -377,7 +377,8 @@ class LLMAdjudicator:
     """
 
     def __init__(self, tier1_matcher: ExactMatcher, tier2_results: list[Tier2Result],
-                 llm_client: Optional[LLMClient] = None):
+                 llm_client: Optional[LLMClient] = None,
+                 extra_consumed: Optional[set[str]] = None):
         self.gw_by_row_id = {r.source_row_id: r for r in tier1_matcher.gateway_records}
         self.bank_by_row_id = {r.source_row_id: r for r in tier1_matcher.bank_records}
         self.ledger_by_row_id = {r.source_row_id: r for r in tier1_matcher.ledger_records}
@@ -387,6 +388,8 @@ class LLMAdjudicator:
         for r in tier2_results:
             if r.status == "MATCHED" and r.matched_records.get("bank"):
                 already_consumed.add(r.matched_records["bank"])
+        if extra_consumed:
+            already_consumed |= set(extra_consumed)
         self._consumed_bank_row_ids: set[str] = already_consumed
 
         self.llm_client = llm_client
@@ -1127,18 +1130,28 @@ def run_tier3(tier2_results: list[Tier2Result], tier1_matcher: ExactMatcher,
 
 def retry_tier3_transaction(transaction_id: str, tier2_results: list[Tier2Result],
                             tier1_matcher: ExactMatcher,
-                            llm_client: LLMClient) -> Tier3Result:
+                            llm_client: LLMClient,
+                            already_consumed: Optional[set[str]] = None) -> Tier3Result:
     """Retry one existing Tier-3 residue transaction with a supplied client.
 
     This deliberately does not rerun normalization, Tier 1, Tier 2, or the
     full dataset. Candidate discovery and validation remain identical to the
     normal Tier 3 path.
+
+    ``already_consumed`` carries bank rows claimed by *other* Tier 3 matches
+    and by Stage 3 split Matches so a retry can never re-offer a row claimed
+    after this transaction's original disposition. Defaults to None (nothing
+    extra), which is safe for module tests but unsafe for the running server.
     """
     residue = get_tier2_residue(tier2_results)
     result = next((r for r in residue if r.transaction_id == transaction_id), None)
     if result is None:
         raise KeyError(transaction_id)
-    adjudicator = LLMAdjudicator(tier1_matcher, tier2_results, llm_client=llm_client)
+    adjudicator = LLMAdjudicator(
+        tier1_matcher, tier2_results,
+        llm_client=llm_client,
+        extra_consumed=already_consumed,
+    )
     return adjudicator.resolve(result, {})
 
 

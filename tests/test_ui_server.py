@@ -222,6 +222,20 @@ class TestTransactionEndpoint(unittest.TestCase):
 
 
 class TestRetryEndpoint(unittest.TestCase):
+    """Retry paths for Tier 3 (AI_RETRY_REQUIRED) and Stage 3 (AI_RETRY_REQUIRED).
+
+    The end-to-end pipeline now resolves PAY109 at Stage 3 (MATCH, consuming
+    bank rows B107/B108). Those rows are seeded into the retry consumed-set,
+    so a genuine Tier-3 retry of PAY109 can no longer propose them (one-to-one
+    invariant). These tests therefore temporarily free B107/B108 from the Stage
+    3 consumed-set to exercise the retry-llm endpoint's real adjudication path,
+    and reset it afterwards. The Stage 3 retry tests run against the server's
+    real state.
+    """
+
+    # Bank rows Stage 3 consumed for its PAY109 split — freed during tests so
+    # the Tier 3 retry can legitimately propose them again.
+    _PAY109_STAGE3_ROWS = {"B107", "B108"}
 
     def setUp(self):
         app.config["TESTING"] = True
@@ -231,6 +245,8 @@ class TestRetryEndpoint(unittest.TestCase):
                              if result.transaction_id == "PAY109")
         self.original_r3 = server_module._r3[self.r3_index]
         self.original_qa_agent = server_module._qa_agent
+        self.original_stage3_consumed = set(server_module._stage3_consumed)
+        server_module._stage3_consumed -= self._PAY109_STAGE3_ROWS
         server_module._index["PAY109"] = {
             "tier": "TIER_3",
             "data": {**self.original_index_entry["data"],
@@ -242,6 +258,7 @@ class TestRetryEndpoint(unittest.TestCase):
         server_module._index["PAY109"] = self.original_index_entry
         server_module._r3[self.r3_index] = self.original_r3
         server_module._qa_agent = self.original_qa_agent
+        server_module._stage3_consumed = self.original_stage3_consumed
 
     def test_retry_unavailable_remains_retryable(self):
         with patch.object(server_module, "GeminiLLMClient", return_value=RetryUnavailableLLM()):
@@ -265,6 +282,92 @@ class TestRetryEndpoint(unittest.TestCase):
         server_module._index["PAY109"]["data"]["status"] = "HUMAN_REVIEW"
         response = self.client.post("/api/transaction/PAY109/retry-llm")
         self.assertEqual(response.status_code, 409)
+
+    def test_retry_llm_rejects_stage3_transaction(self):
+        """A transaction the live pipeline resolved at Stage 3 (e.g. PAY109)
+        must NOT be retryable via /retry-llm — that endpoint is Tier 3 only.
+        Reverting the index to its true STAGE_3 state must yield 409."""
+        server_module._index["PAY109"] = self.original_index_entry
+        response = self.client.post("/api/transaction/PAY109/retry-llm")
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("tier", response.get_json())
+        self.assertEqual(response.get_json()["tier"], "STAGE_3")
+
+    def test_retry_llm_dropped_rows_are_never_reproposed(self):
+        """Once Stage 3 consumes a bank row for its split, a Tier 3 retry of a
+        DIFFERENT transaction must not be able to consume that row. We retry
+        PAY109 but WITHOUT freeing B107/B108, so its only candidates are
+        unavailable — Python must refuse to resolve rather than force MATCH."""
+        # Simulate the real production state: Stage 3 consumed B107/B108.
+        # Re-consume them (setUp just freed them) so PAY109's candidates are
+        # unavailable; the RetrySuccessLLM mock will echo B107/B108 back, and
+        # the validator must reject them as consumed.
+        server_module._stage3_consumed |= self._PAY109_STAGE3_ROWS
+        with patch.object(server_module, "GeminiLLMClient", return_value=RetrySuccessLLM()):
+            response = self.client.post("/api/transaction/PAY109/retry-llm")
+        data = response.get_json()
+        self.assertNotEqual(data["status"], "MATCH",
+                            "retry must never claim rows Stage 3 already owns")
+
+    def test_retry_stage3_requires_stage3_tier(self):
+        """/retry-stage3 must reject a non-Stage-3 transaction with 409."""
+        response = self.client.post("/api/transaction/PAY001/retry-stage3")
+        self.assertEqual(response.status_code, 409)
+        body = response.get_json()
+        self.assertIn("tier", body)
+
+    def test_retry_stage3_unknown_transaction_404(self):
+        response = self.client.post("/api/transaction/PAY999/retry-stage3")
+        self.assertEqual(response.status_code, 404)
+
+    def test_retry_stage3_requires_ai_retry_status(self):
+        """A Stage 3 transaction that is NOT AI_RETRY_REQUIRED cannot be retried."""
+        stage3_txn = next(tid for tid, e in server_module._index.items()
+                          if e["tier"] == "STAGE_3" and e["data"]["status"] != "AI_RETRY_REQUIRED")
+        response = self.client.post(f"/api/transaction/{stage3_txn}/retry-stage3")
+        self.assertEqual(response.status_code, 409)
+
+    def test_retry_stage3_deterministic_resolves_even_when_gemini_down(self):
+        """Python stays authoritative: a Stage 3 transaction that resolves
+        deterministically (unique split sum within tolerance) must still reach
+        MATCH on retry even when Gemini is unavailable — the LLM is only ever a
+        recommender for genuine ambiguity. PAY109's 2-row split is unique, so a
+        retry with a down LLM must return 200 MATCH, not block on Gemini."""
+        stage3_txn = "PAY109"
+        entry = server_module._index[stage3_txn]
+        original_tier = entry["tier"]
+        original_data = dict(entry["data"])
+        try:
+            entry["tier"] = "STAGE_3"
+            entry["data"] = {**original_data, "status": "AI_RETRY_REQUIRED"}
+            server_module._index[stage3_txn] = entry
+            with patch.object(server_module, "GeminiLLMClient", return_value=RetryUnavailableLLM()):
+                response = self.client.post(f"/api/transaction/{stage3_txn}/retry-stage3")
+            self.assertEqual(response.status_code, 200,
+                             "deterministic Stage 3 split must not depend on Gemini")
+            data = response.get_json()
+            self.assertEqual(data["status"], "MATCH")
+            # The returned chain must have re-consumed PAY109's split rows.
+            self.assertTrue(set(data["bank_row_ids"]).issubset(server_module._stage3_consumed),
+                            "a Stage 3 MATCH must be added to the stage3 consumed set")
+        finally:
+            server_module._index[stage3_txn] = {"tier": original_tier, "data": original_data}
+
+
+class TestHealthEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        app.config["TESTING"] = True
+        self.client = app.test_client()
+
+    def test_health_returns_ok(self):
+        r = self.client.get("/health")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json(), {"status": "ok"})
+
+    def test_health_content_type_json(self):
+        r = self.client.get("/health")
+        self.assertIn("application/json", r.content_type)
 
 
 class TestQAEndpoint(unittest.TestCase):
