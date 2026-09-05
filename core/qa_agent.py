@@ -117,6 +117,7 @@ QA_STATUS_UNRESOLVED = T3_UNRESOLVED
 
 # Human-readable rule labels used in answers
 _RULE_LABELS: dict[str, str] = {
+    "PARTIAL_PAYMENT": "partial payment",
     RULE_REFUND_LINKED_NET_AMOUNT: "refund-linked net amount",
     RULE_TDS_LINKED_NET_AMOUNT: "TDS-linked net amount",
     RULE_DESCRIPTION_LINKED_REFERENCE: "description-linked reference",
@@ -296,6 +297,7 @@ _TXN_ID_RE = re.compile(r"\b(PAY\d+[A-Z]?(?:-REFUND)?)\b", re.IGNORECASE)
 
 # Rule keywords mapped to canonical rule constants
 _RULE_KEYWORDS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"partial[- ]payments?", re.IGNORECASE), "PARTIAL_PAYMENT"),
     (re.compile(r"split\s+settlement", re.IGNORECASE), RULE_SPLIT_SETTLEMENT_SUM),
     (re.compile(r"llm[- ]assisted", re.IGNORECASE), RULE_SPLIT_SETTLEMENT_SUM),
     (re.compile(r"refund[- ]linked", re.IGNORECASE), RULE_REFUND_LINKED_NET_AMOUNT),

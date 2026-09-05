@@ -646,8 +646,8 @@ function initQA() {
     "Which transactions have partial payments?",
     "Which matched by split settlement rule?",
     "What happened to this transaction?",
-    "How was the settlement amount calculated?",
-    "Which bank rows make up this settlement?",
+    "How was the settlement amount calculated for PAY109?",
+    "Which bank rows make up the settlement for PAY109?",
     "Why was the Gemini recommendation rejected?",
   ];
 
