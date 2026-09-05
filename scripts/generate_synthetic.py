@@ -109,6 +109,10 @@ def make_normal_match(pay_num, amount, txn_date=BATCH_DATE):
         "recorded_amount": money(amount),
         "tax_amount": "0.00",
         "tds_amount": "0.00",
+        "gst_amount": "0.00",
+        "mdr_amount": "0.00",
+        "mdr_gst": "0.00",
+        "fee_amount": "0.00",
         "entry_type": "SALE",
     })
 
@@ -171,6 +175,7 @@ for pay_num, base_amt, diff in rounding_cases:
         "source_row_id": l_id, "ledger_entry_id": f"LED{pay_num:03d}",
         "entry_date": BATCH_DATE, "payment_reference": pay_id, "invoice_reference": inv_id,
         "recorded_amount": money(base_amt), "tax_amount": "0.00", "tds_amount": "0.00",
+        "gst_amount": "0.00", "mdr_amount": "0.00", "mdr_gst": "0.00", "fee_amount": "0.00",
         "entry_type": "SALE",
     })
 
@@ -660,7 +665,8 @@ GATEWAY_FIELDS = ["source_row_id", "payment_id", "payment_date", "amount", "stat
 BANK_FIELDS = ["source_row_id", "bank_transaction_id", "transaction_date", "value_date",
                "credit_amount", "utr", "bank_reference", "description"]
 LEDGER_FIELDS = ["source_row_id", "ledger_entry_id", "entry_date", "payment_reference",
-                  "invoice_reference", "recorded_amount", "tax_amount", "tds_amount", "entry_type"]
+                  "invoice_reference", "recorded_amount", "tax_amount", "tds_amount", "gst_amount", "mdr_amount", "mdr_gst", "fee_amount",
+                  "entry_type"]
 GT_FIELDS = ["transaction_id", "expected_status", "expected_category", "expected_matching_tier",
              "expected_gateway_presence", "expected_bank_presence", "expected_ledger_presence",
              "expected_amount_difference", "expected_date_difference", "discrepancy_id"]

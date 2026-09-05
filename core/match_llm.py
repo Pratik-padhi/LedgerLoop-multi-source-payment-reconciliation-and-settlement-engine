@@ -1142,6 +1142,15 @@ def retry_tier3_transaction(transaction_id: str, tier2_results: list[Tier2Result
     return adjudicator.resolve(result, {})
 
 
+def parse_llm_json(raw: str) -> Optional[dict]:
+    """Module-level alias for LLMAdjudicator._parse_llm_json.
+
+    Exposed so other modules (e.g. core.match_split) can reuse the same
+    robust JSON-extraction logic without importing an internal class method.
+    """
+    return LLMAdjudicator._parse_llm_json(raw)
+
+
 def get_final_residue(results: list[Tier3Result]) -> list[Tier3Result]:
     """
     Everything Tier 3 did NOT resolve to MATCH: HUMAN_REVIEW and

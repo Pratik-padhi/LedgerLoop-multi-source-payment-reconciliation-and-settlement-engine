@@ -274,6 +274,8 @@ def _date_difference_days(gw: CanonicalRecord, bank: CanonicalRecord) -> Optiona
     return abs((d2 - d1).days)
 
 
+
+
 # ===========================================================================
 # Eligibility: which residue transactions may Tier 2 even attempt?
 # ===========================================================================
