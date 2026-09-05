@@ -149,9 +149,15 @@ function renderOverview() {
     else badge.style.display = "none";
   }
 
-  // Subtitle
+  // Subtitle with dataset info
   var sub = document.getElementById("overview-subtitle");
-  if (sub) sub.textContent = total + " transactions processed";
+  if (sub) {
+    var ds = d.dataset || "data";
+    var gwR = d.gateway_rows || 0;
+    var bnR = d.bank_rows || 0;
+    var lgR = d.ledger_rows || 0;
+    sub.textContent = "Dataset: " + ds + " · " + gwR + " gateway · " + bnR + " bank · " + lgR + " ledger rows";
+  }
 
   var tc = d.tier_counts || {};
   var gw = d.gateway_value;
@@ -195,6 +201,7 @@ function renderOverview() {
           '<tr><td>Gemini calls made</td><td class="num">' + (d.llm_calls_made || 0) + '</td></tr>' +
           '<tr><td>Recommendations validated</td><td class="num">' + (d.llm_recommendations_validated || 0) + '</td></tr>' +
           '<tr><td>Recommendations rejected</td><td class="num">' + (d.llm_recommendations_rejected || 0) + '</td></tr>' +
+          (d.llm_models && d.llm_models.length ? '<tr><td>Model chain</td><td class="num" style="font-size:0.72rem">' + d.llm_models.map(function (m) { return esc(m); }).join(" → ") + '</td></tr>' : '') +
         '</tbody></table></div></div>' +
       '<div class="card"><div class="card-head"><h3>Top Rules</h3></div><div class="card-body" style="padding:0.75rem">' +
         rulesHtml(d) +
@@ -472,6 +479,33 @@ function attachRetryListeners(tid, box) {
   if (retryT3) retryT3.addEventListener("click", function () { retryGemini(tid, retryT3); });
   var retryS3 = box.querySelector("[data-retry-stage3]");
   if (retryS3) retryS3.addEventListener("click", function () { retryStage3(tid, retryS3); });
+  var review = box.querySelector("[data-ai-review]");
+  if (review) review.addEventListener("click", function () { requestAIReview(tid, review, box); });
+}
+
+async function requestAIReview(tid, button, box) {
+  button.disabled = true;
+  button.textContent = "Reviewing…";
+  try {
+    var res = await fetch(API + "/api/transaction/" + encodeURIComponent(tid) + "/ai-review", {
+      method: "POST", headers: {"Content-Type": "application/json"}
+    });
+    var data = await res.json();
+    var target = box.querySelector("[data-ai-review-result]");
+    if (!res.ok) throw new Error(data.error || "AI review failed");
+    var review = data.review || {};
+    target.innerHTML = '<div class="evidence-block"><h4>AI Review (read-only)</h4>' +
+      '<div class="ev-row"><span class="ek">Decision</span><span class="ev">' + esc(review.decision || "—") + '</span></div>' +
+      '<div class="ev-row"><span class="ek">Confidence</span><span class="ev">' + pct(Number(review.confidence || 0) * 100) + '%</span></div>' +
+      '<div class="ev-row"><span class="ek">Rationale</span><span class="ev">' + esc(review.rationale || "—") + '</span></div>' +
+      '<div class="ev-row"><span class="ek">Evidence</span><span class="ev">' + esc(JSON.stringify(review.evidence || {})) + '</span></div>' +
+      '</div>';
+    button.textContent = "AI Review complete";
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "AI Review";
+    alert("AI review failed: " + err.message);
+  }
 }
 
 async function retryGemini(tid, button) {
@@ -594,12 +628,13 @@ function renderDetail(d) {
     else if (d.tier === "STAGE_3")
       retryBtn = '<button class="retry-btn" data-retry-stage3>↻ Retry Stage 3</button>';
   }
+  var reviewBtn = '<button class="retry-btn" data-ai-review>AI Review</button>';
 
   return '<div class="detail-card">' +
     '<div class="detail-head">' +
       '<span class="detail-tid">' + esc(d.transaction_id || "—") + '</span>' +
       chip(d.status) + tierChip(d.tier) +
-      retryBtn +
+      retryBtn + reviewBtn +
     '</div>' +
     '<div class="detail-body"><div class="detail-grid"><div>' +
       detailField("Status", statusDot(d.status)) +
@@ -618,7 +653,7 @@ function renderDetail(d) {
           var val = typeof pair[1] === "object" ? JSON.stringify(pair[1]) : pair[1];
           return '<div class="ev-row"><span class="ek">' + esc(pair[0]) + '</span><span class="ev">' + esc(val) + '</span></div>';
         }).join("") + '</div>' : '') +
-      llmBlock +
+      llmBlock + '<div data-ai-review-result></div>' +
     '</div></div></div></div>';
 }
 
@@ -632,67 +667,134 @@ function detailField(label, content) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   Q&A / Settlement Intelligence
+   Q&A / Settlement Intelligence — Chat Interface
    ════════════════════════════════════════════════════════════ */
+
+var _chatReviewMode = false;
+
+var _chatSuggestions = [
+  "Which transactions need human review?",
+  "Show unresolved transactions.",
+  "What happened to PAY109?",
+  "Which matched by split settlement rule?",
+];
+
+var _followUpSuggestions = {
+  LOOKUP:     ["What is the status?", "Why was it matched?", "Show evidence for this transaction"],
+  STATUS:     ["What happened to it?", "Show evidence", "AI Review this transaction"],
+  WHY:        ["What evidence supports this?", "View transaction detail", "Which tier resolved it?"],
+  EVIDENCE:   ["AI Review this transaction", "View transaction detail"],
+  FILTER_STATUS: ["Show unresolved transactions.", "Which have partial payments?"],
+  FILTER_RULE:   ["Which transactions need human review?", "Show exceptions."],
+};
 
 function initQA() {
   if (_qaInited) return;
   _qaInited = true;
   var el = document.getElementById("qa-content");
 
-  var examples = [
-    "Which transactions need human review?",
-    "Show unresolved transactions.",
-    "Which transactions have partial payments?",
-    "Which matched by split settlement rule?",
-    "What happened to this transaction?",
-    "How was the settlement amount calculated for PAY109?",
-    "Which bank rows make up the settlement for PAY109?",
-    "Why was the Gemini recommendation rejected?",
-  ];
-
   el.innerHTML =
     '<div class="qa-wrap">' +
-      '<div class="qa-input-card">' +
-        '<div class="qa-input-head"><h3>Ask a question about your reconciliation data</h3></div>' +
-        '<div class="qa-input-row">' +
-          '<input class="qa-field field" id="qa-input" placeholder="e.g. Which transactions need human review?" autocomplete="off">' +
-          '<button class="qa-send btn btn-primary" id="qa-btn">Ask</button>' +
-        '</div>' +
-        '<div class="qa-chips">' +
-          '<span class="ch-label" style="font-size:0.72rem;color:var(--text-3);margin-right:0.3rem">Try:</span>' +
-          examples.map(function (e) { return '<button class="qa-chip">' + esc(e) + '</button>'; }).join("") +
-        '</div>' +
+      '<div class="chat-messages" id="chat-messages">' +
+        chatWelcomeHtml() +
       '</div>' +
-      '<div class="qa-history" id="qa-history"></div>' +
+      '<div class="chat-input-bar">' +
+        '<button class="chat-review-toggle" id="chat-review-toggle" title="Include AI Review in response">' +
+          '<input type="checkbox" id="chat-review-cb">' +
+          '<span>🤖 AI Review</span>' +
+        '</button>' +
+        '<textarea class="chat-input-field" id="chat-input" rows="1" placeholder="Ask about your reconciliation data…" autocomplete="off"></textarea>' +
+        '<button class="chat-send-btn" id="chat-send-btn">Send</button>' +
+      '</div>' +
     '</div>';
 
-  var input = document.getElementById("qa-input");
-  var btn   = document.getElementById("qa-btn");
-  var hist  = document.getElementById("qa-history");
+  var input = document.getElementById("chat-input");
+  var btn = document.getElementById("chat-send-btn");
+  var toggle = document.getElementById("chat-review-toggle");
+  var cb = document.getElementById("chat-review-cb");
+
+  toggle.addEventListener("click", function () {
+    _chatReviewMode = !_chatReviewMode;
+    cb.checked = _chatReviewMode;
+    toggle.classList.toggle("active", _chatReviewMode);
+  });
 
   function submit() {
     var q = input.value.trim();
     if (!q) return;
     input.value = "";
-    askQA(q, hist);
+    autoResize(input);
+    sendChat(q);
   }
 
   btn.addEventListener("click", submit);
-  input.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+  });
+  input.addEventListener("input", function () { autoResize(input); });
 
-  el.querySelectorAll(".qa-chip").forEach(function (b) {
-    b.addEventListener("click", function () { input.value = b.textContent; submit(); });
+  // Suggestion chips
+  el.querySelectorAll(".chat-suggestion").forEach(function (b) {
+    b.addEventListener("click", function () {
+      input.value = b.textContent;
+      autoResize(input);
+      submit();
+    });
   });
 }
 
-async function askQA(q, hist) {
-  var turn = document.createElement("div");
-  turn.className = "qa-turn";
-  turn.innerHTML =
-    '<div class="qa-turn-q">' + esc(q) + '</div>' +
-    '<div class="qa-turn-a">' + loadingHtml("Thinking…") + '</div>';
-  hist.prepend(turn);
+function autoResize(textarea) {
+  textarea.style.height = "auto";
+  textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
+}
+
+function chatWelcomeHtml() {
+  var chips = _chatSuggestions.map(function (s) {
+    return '<button class="chat-suggestion">' + esc(s) + '</button>';
+  }).join("");
+  return '<div class="chat-welcome">' +
+    '<h2>Settlement Intelligence</h2>' +
+    '<p>Ask questions about your reconciliation data. The AI follows deterministic matching rules and explains decisions grounded in real pipeline results.</p>' +
+    '<div class="chat-suggestions">' + chips + '</div>' +
+  '</div>';
+}
+
+function addUserMessage(q) {
+  var msgs = document.getElementById("chat-messages");
+  // Remove welcome screen
+  var welcome = msgs.querySelector(".chat-welcome");
+  if (welcome) welcome.remove();
+
+  var div = document.createElement("div");
+  div.className = "chat-msg user";
+  div.innerHTML =
+    '<div class="chat-avatar">👤</div>' +
+    '<div class="chat-bubble">' + esc(q) + '</div>';
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addTypingIndicator() {
+  var msgs = document.getElementById("chat-messages");
+  var div = document.createElement("div");
+  div.className = "chat-msg ai";
+  div.id = "chat-typing";
+  div.innerHTML =
+    '<div class="chat-avatar">🤖</div>' +
+    '<div class="chat-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  var el = document.getElementById("chat-typing");
+  if (el) el.remove();
+}
+
+async function sendChat(q) {
+  var reviewMode = _chatReviewMode;
+  addUserMessage(q);
+  addTypingIndicator();
 
   try {
     var res = await fetch(API + "/api/qa", {
@@ -701,22 +803,218 @@ async function askQA(q, hist) {
       body: JSON.stringify({question: q}),
     });
     var data = await res.json();
-    var answer = data.explanation || "No explanation returned.";
-    var meta = [];
-    if (data.llm_used) meta.push("🤖 LLM used");
-    if (data.llm_unavailable) meta.push("⚠️ LLM unavailable");
-    if (data.found === false) meta.push("❓ Not found");
-    if (data.supported === false) meta.push("🚫 Unsupported question");
-    turn.innerHTML =
-      '<div class="qa-turn-q">' + esc(q) + '</div>' +
-      '<div class="qa-turn-a">' +
-        '<div class="answer-text">' + esc(answer) + '</div>' +
-        (meta.length ? '<div class="answer-meta">' + meta.join(' · ') + '</div>' : "") +
-      '</div>';
+    removeTypingIndicator();
+    addAIResponse(data, reviewMode);
+    updateFollowUps(data);
   } catch (err) {
-    turn.innerHTML =
-      '<div class="qa-turn-q">' + esc(q) + '</div>' +
-      '<div class="qa-turn-a"><div class="answer-text" style="color:var(--red)">Error: ' + esc(err.message) + '</div></div>';
+    removeTypingIndicator();
+    addAIError(err.message);
+  }
+}
+
+function addAIResponse(data, reviewMode) {
+  var msgs = document.getElementById("chat-messages");
+  var div = document.createElement("div");
+  div.className = "chat-msg ai";
+
+  var intent = (data.intent || "UNKNOWN").replace("INTENT_", "").toLowerCase();
+  var intentClass = intent;
+  if (intent === "filter_status" || intent === "filter_rule") intentClass = "filter";
+  if (intent === "unsupported") intentClass = "unsupported";
+
+  var answer = data.explanation || "No explanation returned.";
+  var tid = (data.transaction_ids && data.transaction_ids[0]) || null;
+
+  // Info rows
+  var infoHtml = "";
+  var rows = [];
+  if (tid) rows.push(["Transaction", tid]);
+  if (data.retrieved_data && data.retrieved_data.length > 0) {
+    var rd = data.retrieved_data[0];
+    if (rd.status) rows.push(["Status", rd.status]);
+    if (rd.tier) rows.push(["Tier", rd.tier]);
+    if (rd.rule) rows.push(["Rule", rd.rule]);
+    if (rd.reason) rows.push(["Reason", rd.reason]);
+    if (rd.confidence != null) rows.push(["Confidence", pct(Number(rd.confidence) * 100) + "%"]);
+  }
+  if (rows.length > 0) {
+    infoHtml = '<div class="chat-info-rows">' +
+      rows.map(function (r) {
+        return '<div class="chat-info-row"><span class="chat-info-key">' + esc(r[0]) + '</span><span class="chat-info-val">' + esc(String(r[1])) + '</span></div>';
+      }).join("") +
+    '</div>';
+  }
+
+  // Confidence bar
+  var confHtml = "";
+  if (data.retrieved_data && data.retrieved_data[0] && data.retrieved_data[0].confidence != null) {
+    var c = Math.round(Number(data.retrieved_data[0].confidence) * 100);
+    var cls = c >= 75 ? "high" : (c >= 50 ? "medium" : "low");
+    confHtml = '<div class="chat-confidence">' +
+      '<span class="chat-confidence-label">Confidence</span>' +
+      '<div class="chat-confidence-bar"><div class="chat-confidence-fill ' + cls + '" style="width:' + c + '%"></div></div>' +
+      '<span class="chat-confidence-val">' + c + '%</span>' +
+    '</div>';
+  }
+
+  // Meta tags
+  var metaHtml = "";
+  var meta = [];
+  if (data.llm_used) meta.push("🤖 LLM used");
+  if (data.llm_unavailable) meta.push("⚠️ LLM unavailable");
+  if (data.found === false) meta.push("❓ Not found");
+  if (data.supported === false) meta.push("🚫 Unsupported");
+  if (meta.length) {
+    metaHtml = '<div class="chat-meta">' +
+      meta.map(function (m) { return '<span>' + m + '</span>'; }).join("") +
+    '</div>';
+  }
+
+  // Action buttons
+  var actionsHtml = "";
+  var actions = [];
+  if (tid) {
+    actions.push('<button class="chat-action-btn primary" onclick="chatViewTransaction(\'' + esc(tid) + '\')">📄 View Transaction</button>');
+    actions.push('<button class="chat-action-btn" onclick="chatAIReview(\'' + esc(tid) + '\', this)">🤖 AI Review</button>');
+  }
+  if (data.retrieved_data && data.retrieved_data[0] && data.retrieved_data[0].status === "AI_RETRY_REQUIRED") {
+    if (tid) actions.push('<button class="chat-action-btn" onclick="chatRetryLLM(\'' + esc(tid) + '\', this)">↻ Retry Gemini</button>');
+  }
+  if (actions.length) {
+    actionsHtml = '<div class="chat-actions">' + actions.join("") + '</div>';
+  }
+
+  div.innerHTML =
+    '<div class="chat-avatar">🤖</div>' +
+    '<div class="chat-bubble"><div class="chat-card">' +
+      '<div class="chat-card-head">' +
+        '<span class="intent-badge ' + intentClass + '">' + esc(intent.replace(/_/g, " ")) + '</span>' +
+      '</div>' +
+      '<div class="chat-card-body">' + esc(answer) + '</div>' +
+      infoHtml + confHtml + metaHtml + actionsHtml +
+    '</div></div>';
+
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addAIError(msg) {
+  var msgs = document.getElementById("chat-messages");
+  var div = document.createElement("div");
+  div.className = "chat-msg ai";
+  div.innerHTML =
+    '<div class="chat-avatar">🤖</div>' +
+    '<div class="chat-bubble"><div class="chat-card">' +
+      '<div class="chat-card-body" style="color:var(--red)">Error: ' + esc(msg) + '</div>' +
+    '</div></div>';
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function updateFollowUps(data) {
+  var intent = (data.intent || "").replace("INTENT_", "");
+  var suggestions = _followUpSuggestions[intent] || _chatSuggestions;
+  var container = document.querySelector(".chat-messages");
+  if (!container) return;
+
+  // Update the suggestions shown at the bottom (or add them after last message)
+  var existing = container.querySelector(".chat-follow-ups");
+  if (existing) existing.remove();
+
+  var div = document.createElement("div");
+  div.className = "chat-follow-ups";
+  div.style.cssText = "display:flex;flex-wrap:wrap;gap:0.35rem;padding:0.25rem 0 0.5rem 3.25rem;";
+  suggestions.forEach(function (s) {
+    var btn = document.createElement("button");
+    btn.className = "chat-suggestion";
+    btn.textContent = s;
+    btn.addEventListener("click", function () {
+      var input = document.getElementById("chat-input");
+      if (input) { input.value = s; autoResize(input); input.focus(); }
+    });
+    div.appendChild(btn);
+  });
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+/* ── Chat action handlers ─────────────────────────────────── */
+
+function chatViewTransaction(tid) {
+  switchPanel("transactions");
+  setTimeout(function () { loadTxnDetail(tid); }, 100);
+}
+
+async function chatAIReview(tid, button) {
+  button.disabled = true;
+  button.textContent = "Reviewing…";
+  try {
+    var res = await fetch(API + "/api/transaction/" + encodeURIComponent(tid) + "/ai-review", {
+      method: "POST", headers: {"Content-Type": "application/json"}
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || "AI review failed");
+    var review = data.review || {};
+    var conf = review.confidence != null ? Math.round(review.confidence * 100) : null;
+    var confCls = conf != null ? (conf >= 75 ? "high" : (conf >= 50 ? "medium" : "low")) : "";
+    var resultHtml =
+      '<div class="chat-review-result">' +
+        '<div class="chat-review-head">🤖 AI Review Result</div>' +
+        (conf != null ?
+          '<div class="chat-confidence" style="border:none;padding:0.2rem 0">' +
+            '<span class="chat-confidence-label">Confidence</span>' +
+            '<div class="chat-confidence-bar"><div class="chat-confidence-fill ' + confCls + '" style="width:' + conf + '%"></div></div>' +
+            '<span class="chat-confidence-val">' + conf + '%</span>' +
+          '</div>' : '') +
+        '<div class="chat-info-rows" style="border:none">' +
+          (review.decision ? '<div class="chat-info-row"><span class="chat-info-key">Decision</span><span class="chat-info-val">' + esc(review.decision) + '</span></div>' : '') +
+          (review.rationale ? '<div class="chat-info-row"><span class="chat-info-key">Rationale</span><span class="chat-info-val">' + esc(review.rationale) + '</span></div>' : '') +
+          (review.evidence && Object.keys(review.evidence).length > 0 ?
+            '<div class="chat-info-row"><span class="chat-info-key">Evidence</span><span class="chat-info-val" style="font-family:var(--font-mono);font-size:0.72rem">' + esc(JSON.stringify(review.evidence)) + '</span></div>' : '') +
+        '</div>' +
+      '</div>';
+
+    // Insert the review result into the current chat
+    var msgs = document.getElementById("chat-messages");
+    var div = document.createElement("div");
+    div.className = "chat-msg ai";
+    div.innerHTML = '<div class="chat-avatar">🤖</div><div class="chat-bubble">' + resultHtml + '</div>';
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    button.textContent = "✓ Reviewed";
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "🤖 AI Review";
+    alert("AI review failed: " + err.message);
+  }
+}
+
+async function chatRetryLLM(tid, button) {
+  button.disabled = true;
+  button.textContent = "Retrying…";
+  try {
+    var res = await fetch(API + "/api/transaction/" + encodeURIComponent(tid) + "/retry-llm", {
+      method: "POST", headers: {"Content-Type": "application/json"}
+    });
+    var data = await res.json();
+    var msgs = document.getElementById("chat-messages");
+    var status = data.status || "UNKNOWN";
+    var color = status === "MATCH" ? "var(--green)" : "var(--amber)";
+    var div = document.createElement("div");
+    div.className = "chat-msg ai";
+    div.innerHTML =
+      '<div class="chat-avatar">🤖</div>' +
+      '<div class="chat-bubble"><div class="chat-card">' +
+        '<div class="chat-card-head"><span class="intent-badge">RETRY RESULT</span></div>' +
+        '<div class="chat-card-body">Transaction <strong>' + esc(tid) + '</strong> is now: <span style="color:' + color + ';font-weight:600">' + esc(status) + '</span></div>' +
+      '</div></div>';
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    button.textContent = "✓ Done";
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "↻ Retry Gemini";
+    alert("Retry failed: " + err.message);
   }
 }
 

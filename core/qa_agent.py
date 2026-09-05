@@ -99,6 +99,7 @@ from core.match_llm import (
     RULE_TDS_LINKED_NET_AMOUNT,
     RULE_DESCRIPTION_LINKED_REFERENCE,
     GeminiLLMClient,
+    GeminiFallbackClient,
     LLMUnavailableError,
 )
 from core.match_split import (
@@ -681,7 +682,7 @@ class SettlementQAAgent:
             # Auto-select Gemini from the environment (same logic as run_tier3)
             provider = os.environ.get("LLM_PROVIDER", "").lower()
             if provider == "gemini" or (not provider and os.environ.get("GEMINI_API_KEY")):
-                self._llm = GeminiLLMClient(structured=False)
+                self._llm = GeminiFallbackClient(structured=False)
             else:
                 self._llm = None
         else:

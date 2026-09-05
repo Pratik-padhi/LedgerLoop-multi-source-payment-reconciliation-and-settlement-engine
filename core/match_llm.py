@@ -317,6 +317,50 @@ class GeminiLLMClient:
             raise LLMUnavailableError(f"Gemini API returned an unexpected shape: {e}") from e
 
 
+class GeminiFallbackClient:
+    """Try configured Gemini models in order when a model/API is unavailable.
+
+    Model resolution order:
+      1. Explicit ``models`` argument (highest priority)
+      2. ``GEMINI_MODELS`` env var (comma-separated list)
+      3. Built-in free-tier fallback chain (below)
+
+    The built-in chain uses free-tier Gemini models that produce similar
+    structured output quality, so even without any env vars the client
+    gracefully walks through several options before giving up.
+    """
+
+    # Built-in free-tier fallback chain — tried after the primary model
+    # when GEMINI_MODELS is not set.  All support JSON structured output.
+    _FALLBACK_MODELS: list[str] = [
+        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash-lite",
+        "gemini-2.5-flash",
+    ]
+
+    def __init__(self, models: Optional[list[str]] = None, structured: bool = True):
+        configured = models or [
+            model.strip()
+            for model in os.environ.get("GEMINI_MODELS", "").split(",")
+            if model.strip()
+        ]
+        primary = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
+        if not configured:
+            configured = [m for m in self._FALLBACK_MODELS if m != primary]
+        self.models = list(dict.fromkeys([primary, *configured]))
+        self.structured = structured
+
+    def complete(self, system: str, user: str) -> str:
+        last_error: Optional[LLMUnavailableError] = None
+        for model in self.models:
+            try:
+                return GeminiLLMClient(model=model, structured=self.structured).complete(system, user)
+            except LLMUnavailableError as error:
+                last_error = error
+                logger.warning("Gemini model unavailable: model=%s; trying fallback", model)
+        raise last_error or LLMUnavailableError("No Gemini models configured")
+
+
 # ===========================================================================
 # Small helpers
 # ===========================================================================
@@ -1095,7 +1139,7 @@ def run_tier3(tier2_results: list[Tier2Result], tier1_matcher: ExactMatcher,
     if llm_client is _AUTO_LLM:
         provider = os.environ.get("LLM_PROVIDER", "").lower()
         if provider == "gemini" or (not provider and os.environ.get("GEMINI_API_KEY")):
-            selected_llm_client = GeminiLLMClient()
+            selected_llm_client = GeminiFallbackClient()
     else:
         selected_llm_client = llm_client
 

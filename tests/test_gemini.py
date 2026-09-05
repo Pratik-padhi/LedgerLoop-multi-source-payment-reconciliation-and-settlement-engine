@@ -5,10 +5,18 @@ import unittest
 import urllib.error
 from unittest.mock import MagicMock, patch
 
-from core.match_llm import GeminiLLMClient, LLMUnavailableError
+from core.match_llm import GeminiFallbackClient, GeminiLLMClient, LLMUnavailableError
 
 
 class TestGeminiLLMClient(unittest.TestCase):
+
+    def test_fallback_client_uses_configured_model_order(self):
+        with patch.dict(os.environ, {
+            "GEMINI_MODEL": "gemini-primary",
+            "GEMINI_MODELS": "gemini-secondary,gemini-tertiary",
+        }):
+            client = GeminiFallbackClient()
+        self.assertEqual(client.models, ["gemini-primary", "gemini-secondary", "gemini-tertiary"])
     def test_implements_llm_client_protocol(self):
         self.assertTrue(callable(GeminiLLMClient().complete))
 

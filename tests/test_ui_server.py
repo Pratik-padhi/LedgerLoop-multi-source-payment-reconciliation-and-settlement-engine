@@ -61,7 +61,9 @@ class TestOverviewEndpoint(unittest.TestCase):
                     "tier3_summary", "llm_calls_made",
                     "gateway_value", "reconciled_value",
                     "reconciliation_rate", "exception_count",
-                    "settlement_variance"):
+                    "settlement_variance",
+                    "dataset", "gateway_rows", "bank_rows", "ledger_rows",
+                    "llm_models"):
             self.assertIn(key, d, f"missing key: {key}")
 
     def test_total_matches_index(self):
@@ -120,6 +122,25 @@ class TestOverviewEndpoint(unittest.TestCase):
         # Verified against the real dataset: 116 gateway rows → 116 transactions
         # indexed (includes refund rows). The total must be >100 and consistent.
         self.assertGreater(d["total_transactions"], 100)
+
+    def test_dataset_is_nonempty_string(self):
+        r = self.client.get("/api/overview")
+        d = r.get_json()
+        self.assertIsInstance(d["dataset"], str)
+        self.assertGreater(len(d["dataset"]), 0)
+
+    def test_source_row_counts_positive(self):
+        r = self.client.get("/api/overview")
+        d = r.get_json()
+        self.assertGreater(d["gateway_rows"], 0)
+        self.assertGreater(d["bank_rows"], 0)
+        self.assertGreater(d["ledger_rows"], 0)
+
+    def test_llm_models_is_list(self):
+        r = self.client.get("/api/overview")
+        d = r.get_json()
+        self.assertIsInstance(d["llm_models"], list)
+        self.assertGreater(len(d["llm_models"]), 0)
 
 
 class TestExceptionsEndpoint(unittest.TestCase):
@@ -306,6 +327,32 @@ class TestRetryEndpoint(unittest.TestCase):
         server_module._index["PAY109"]["data"]["status"] = "HUMAN_REVIEW"
         response = self.client.post("/api/transaction/PAY109/retry-llm")
         self.assertEqual(response.status_code, 409)
+
+    def test_ai_review_returns_structured_read_only_result(self):
+        class ReviewLLM:
+            def complete(self, system, user):
+                return json.dumps({
+                    "decision": "REVIEW",
+                    "confidence": 0.82,
+                    "rationale": "The stored settlement evidence is internally consistent.",
+                    "evidence": {"source": "stored_context"},
+                    "adjustment": {},
+                })
+
+        with patch.object(server_module, "GeminiFallbackClient", return_value=ReviewLLM()):
+            response = self.client.post("/api/transaction/PAY109/ai-review")
+        data = response.get_json()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["review"]["confidence"], 0.82)
+        self.assertEqual(data["source_status"], "AI_RETRY_REQUIRED")
+
+    def test_ai_review_failure_is_retryable_without_mutating_result(self):
+        original = dict(server_module._index["PAY109"]["data"])
+        with patch.object(server_module, "GeminiFallbackClient", side_effect=Exception("provider down")):
+            response = self.client.post("/api/transaction/PAY109/ai-review")
+        self.assertEqual(response.status_code, 503)
+        self.assertTrue(response.get_json()["retryable"])
+        self.assertEqual(server_module._index["PAY109"]["data"], original)
 
     def test_retry_llm_rejects_stage3_transaction(self):
         """A transaction the live pipeline resolved at Stage 3 (e.g. PAY109)
