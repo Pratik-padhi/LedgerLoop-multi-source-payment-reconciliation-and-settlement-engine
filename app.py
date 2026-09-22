@@ -38,8 +38,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, jsonify, request, send_from_directory, abort
 
-from core.match_exact import run_tier1, get_residue
-from core.match_fuzzy import run_tier2
 from core.match_llm import (
     run_tier3,
     retry_tier3_transaction,
@@ -52,85 +50,27 @@ from core.match_llm import (
     STATUS_AI_RETRY_REQUIRED,
 )
 from core.match_split import (
-    run_stage3,
     retry_stage3_transaction,
     SplitStatus,
     SplitResult,
 )
+from core.config import load_settings
 from core.qa_agent import build_qa_agent
+from core.service import consumed_bank_ids, run_reconciliation
 
 # ---------------------------------------------------------------------------
 # Pipeline — run once at module load so the server starts hot
 # ---------------------------------------------------------------------------
 
-_DATA_DIR = os.environ.get(
-    "LEDGERLOOP_DATA_DIR",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
-)
-
-
-def _consumed_bank_ids(r1, r2, r3) -> set:
-    """Bank source_row_ids already claimed by one-to-one matching (Tier 1/2/3)."""
-    consumed: set[str] = set()
-    for results in (r1, r2, r3):
-        for r in results:
-            bank_id = getattr(r, "matched_records", {}).get("bank")
-            if bank_id:
-                consumed.add(bank_id)
-    return consumed
-
-
-def _stage3_pending_txns(r3) -> list[dict]:
-    """Build Stage 3 pending transactions from the Tier 3 residue.
-
-    Stage 3 is the split / multi-payment / partial pass. It runs only on
-    transactions Tier 3 could not resolve one-to-one (AI_RETRY_REQUIRED,
-    HUMAN_REVIEW, UNRESOLVED) — never on anything Tier 3 already matched.
-    """
-    pending = []
-    for r in r3:
-        if r.status != STATUS_MATCH:
-            pending.append({
-                "transaction_id": r.transaction_id,
-                "gateway_row_id": r.matched_records.get("gateway"),
-                "ledger_row_id": r.matched_records.get("ledger"),
-            })
-    return pending
-
-
-def _run_pipeline():
-    """Execute the full reconciliation pipeline and return all results.
-
-    Returns an extra pair (r4, summary4) for the Stage 3 split/multi-payment
-    pass over the Tier 3 residue.
-    """
-    r1, summary1, matcher = run_tier1(data_dir=_DATA_DIR, return_matcher=True)
-    residue1 = get_residue(r1)
-    r2, summary2 = run_tier2(residue1, matcher)
-    r3, summary3 = run_tier3(r2, matcher)   # uses env LLM_PROVIDER / GEMINI_API_KEY if set
-
-    # Stage 3: split / multi-payment reconciliation over Tier 3 residue.
-    already_consumed = _consumed_bank_ids(r1, r2, r3)
-    pending_txns = _stage3_pending_txns(r3)
-    provider = os.environ.get("LLM_PROVIDER", "").lower()
-    stage3_llm = (
-        GeminiFallbackClient()
-        if provider == "gemini" or os.environ.get("GEMINI_API_KEY")
-        else None
-    )
-    r4, summary4 = run_stage3(
-        matcher.gateway_records,
-        matcher.bank_records,
-        matcher.ledger_records,
-        already_consumed,
-        pending_txns,
-        llm_client=stage3_llm,
-    )
-    return r1, summary1, r2, summary2, r3, summary3, r4, summary4, matcher
+_SETTINGS = load_settings()
+_DATA_DIR = str(_SETTINGS.data_dir)
 
 
 print("LedgerLoop: running reconciliation pipeline…", flush=True)
-_r1, _summary1, _r2, _summary2, _r3, _summary3, _r4, _summary4, _matcher = _run_pipeline()
+_run = run_reconciliation(_SETTINGS)
+_r1, _summary1, _r2, _summary2 = _run.r1, _run.summary1, _run.r2, _run.summary2
+_r3, _summary3, _r4, _summary4 = _run.r3, _run.summary3, _run.r4, _run.summary4
+_matcher = _run.matcher
 print(
     f"  Tier 1: {_summary1.matched_count} matched / "
     f"{_summary1.partial_match_count} partial / "
@@ -162,11 +102,7 @@ print(
 # retry from re-using rows another split already consumed.
 # ---------------------------------------------------------------------------
 
-_stage3_consumed: set[str] = set()
-for r in _r4:
-    if r.status == SplitStatus.MATCH:
-        for bank_id in r.bank_row_ids:
-            _stage3_consumed.add(bank_id)
+_stage3_consumed: set[str] = set(_run.stage3_consumed)
 
 # ---------------------------------------------------------------------------
 # Build the authoritative result index for per-transaction lookups.
@@ -294,11 +230,7 @@ def api_overview():
     total = len(_index)
 
     # LLM model chain (built-in defaults + env overrides)
-    _primary = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash-lite")
-    _env_chain = [
-        m.strip() for m in os.environ.get("GEMINI_MODELS", "").split(",") if m.strip()
-    ]
-    llm_models = list(dict.fromkeys([_primary, *_env_chain]))
+    llm_models = list(_SETTINGS.gemini_models)
 
     return jsonify({
         "total_transactions": total,
@@ -435,7 +367,7 @@ def api_retry_llm(txn_id: str):
         _r2,
         _matcher,
         GeminiLLMClient(),
-        already_consumed=_consumed_bank_ids(_r1, _r2, _r3) | _stage3_consumed,
+        already_consumed=consumed_bank_ids(_r1, _r2, _r3) | _stage3_consumed,
     )
     result_data = result.to_dict()
     for index, previous in enumerate(_r3):
@@ -498,7 +430,7 @@ def api_retry_stage3(txn_id: str):
         _matcher.gateway_records,
         _matcher.bank_records,
         _matcher.ledger_records,
-        _consumed_bank_ids(_r1, _r2, _r3),
+        consumed_bank_ids(_r1, _r2, _r3),
         _stage3_consumed,
         GeminiLLMClient(),
     )

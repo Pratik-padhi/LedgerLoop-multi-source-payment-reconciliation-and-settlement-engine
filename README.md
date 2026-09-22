@@ -4,6 +4,8 @@ LedgerLoop is a schema-driven, multi-source payment reconciliation and settlemen
 
 The current implementation is built around a fixed demo schema and CSV dataset. It can be extended to additional source formats, but it does not currently accept arbitrary CSV schemas without corresponding normalization support.
 
+The repository layout and ownership boundaries are documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The root `app.py` is intentionally retained as the Render/Gunicorn entrypoint; reconciliation logic lives under `core/`, datasets under `data/` and `data_large/`, and operational tooling under `scripts/`.
+
 ## Reconciliation pipeline
 
 The pipeline processes only the previous tier's residue:
@@ -21,7 +23,7 @@ The repository includes a synthetic dataset of 111 logical transactions across 1
 
 ## Run locally
 
-Use Python 3.13, install the dependencies, and start the development server:
+Use Python 3.13 or newer, install the dependencies, and start the development server:
 
 ```bash
 python -m pip install -r requirements.txt
@@ -45,6 +47,10 @@ Run the full test suite with:
 python -m pytest -v
 ```
 
+Generated inspection reports are kept out of the source tree's main surfaces:
+`docs/reports/` contains reports, while normalized and Tier 1 debug exports are
+written under ignored subdirectories of `data/`.
+
 For deterministic offline tests, leave `GEMINI_API_KEY` unset. The pipeline safely falls back to human review when Gemini is unavailable.
 
 ## Gemini configuration
@@ -53,7 +59,15 @@ Gemini is optional and configured only through environment variables:
 
 - `GEMINI_API_KEY` - required for live Gemini requests; never commit or expose this value.
 - `LLM_PROVIDER=gemini` - optional; selects the supported Gemini provider.
-- `GEMINI_MODEL=gemini-3.6-flash` - optional model override.
+- `GEMINI_MODEL=gemini-2.5-flash-lite` - optional model override. The same model is used by default in local and deployed configuration unless overridden.
+- `GEMINI_MODELS` - optional comma-separated fallback model chain shown in the overview response.
+
+## Dataset profiles
+
+Local runs default to the compact `data/` dataset for fast, deterministic startup.
+Set `LEDGERLOOP_DATA_DIR=data_large` to run the expanded deployment and benchmark
+profile. The reconciliation service receives this selection explicitly, so tests
+and other integrations can choose a dataset without changing matching logic.
 
 The deterministic tiers and Settlement Q&A remain usable without an API key. The Q&A endpoint is configured for deterministic explanations by default.
 
@@ -67,7 +81,7 @@ Create a Render Blueprint deployment from `render.yaml`:
 - Build command: `pip install -r requirements.txt`
 - Start command: `gunicorn app:app`
 - Required environment variable: `GEMINI_API_KEY` (set as a Render secret if live Tier 3 Gemini calls are desired)
-- Optional environment variables: `LLM_PROVIDER` and `GEMINI_MODEL`
+- Optional environment variables: `LLM_PROVIDER`, `GEMINI_MODEL`, `GEMINI_MODELS`, and `LEDGERLOOP_DATA_DIR`
 
 Render supplies `PORT`; Gunicorn imports the single Flask application as `app:app`. The included CSV data is read from the repository at startup, and no database or background worker is required for this demo deployment.
 
