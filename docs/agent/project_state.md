@@ -34,6 +34,15 @@ c3360fa ("Add Q&A report HTML and configuration tests") with uncommitted working
   - `test_reconciliation_run_is_persisted` (PASS)
   - `test_adapter_maps_explicit_headers` (PASS)
   - `test_adapter_rejects_missing_configured_header` (PASS)
+- **Identified and fixed Render deployment performance bottleneck** (2025-09-24):
+  - **Bottleneck**: `run_reconciliation()` in [core/service.py](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/core/service.py) was calling `GeminiFallbackClient()` for Tier 3 and Stage 3 whenever `settings.gemini_enabled` was True (which is True on Render because `render.yaml` sets `LLM_PROVIDER: gemini` and `GEMINI_API_KEY`). This caused **dozens of sequential HTTP calls to Google Gemini API** during the initial `/api/overview` request.
+  - **Impact**: Reconciliation took **12+ seconds** (vs 0.36s offline), exceeding Gunicorn's default 30s worker timeout, causing worker kills, 502 errors, and the browser showing "Could not load data".
+  - **Root Cause**: `run_tier3` default parameter `_AUTO_LLM` checked `LLM_PROVIDER`/`GEMINI_API_KEY` env vars, and `run_stage3` used `settings.gemini_enabled`. Neither respected `settings.ai_enabled` (which requires explicit `LEDGERLOOP_ENABLE_AI=1` opt-in).
+  - **Fix** (3 lines in `core/service.py`):
+    - Pass `llm_client=GeminiFallbackClient() if settings.ai_enabled else None` explicitly to `run_tier3`
+    - Use `settings.ai_enabled` (not `settings.gemini_enabled`) for `stage3_llm` in `run_stage3`
+  - **Result**: Reconciliation on `data_large` with Render config now completes in **0.36s with 0 LLM calls** (down from 12s+ with 50+ failed calls).
+  - **All 406 tests pass**, `git diff --check` clean.
 
 ## In Progress
 None.

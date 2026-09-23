@@ -87,10 +87,11 @@ def run_reconciliation(settings: Settings | None = None) -> ReconciliationRun:
         return_matcher=True,
     )
     r2, summary2 = run_tier2(get_residue(r1), matcher)
-    r3, summary3 = run_tier3(r2, matcher)
+    tier3_llm = GeminiFallbackClient() if settings.ai_enabled else None
+    r3, summary3 = run_tier3(r2, matcher, llm_client=tier3_llm)
 
     consumed = consumed_bank_ids(r1, r2, r3)
-    stage3_llm = GeminiFallbackClient() if settings.gemini_enabled else None
+    stage3_llm = GeminiFallbackClient() if settings.ai_enabled else None
     r4, summary4 = run_stage3(
         matcher.gateway_records,
         matcher.bank_records,
