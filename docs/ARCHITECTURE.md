@@ -54,12 +54,19 @@ core.service.ReconciliationRun
 The matching stages own financial decisions. `app.py` serializes results and
 routes requests; it should not contain matching rules. `core.service` is the
 callable boundary for running the complete pipeline without depending on Flask.
+It persists the completed snapshot only after the deterministic pipeline has
+finished; persistence cannot alter a match. Retry endpoints require an actor
+outside test mode and write an append-only audit record before retrying.
 
 ## Dataset policy
 
 - `data/` is the fast local default and the compact validation profile.
 - `data_large/` is the expanded scenario and deployment profile.
 - `ground_truth.csv` is evaluation-only and must never be read by matching code.
+- SQLite snapshots contain completed result JSON and summaries, not raw source
+  CSVs, API keys, or evaluation truth.
+- Input schema adaptation is explicit header mapping. It is intentionally not
+  universal CSV inference.
 - Generated inspection output belongs in ignored subdirectories such as
   `data/normalized/`, `data/tier1/`, or `docs/reports/`.
 

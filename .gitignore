@@ -32,6 +32,7 @@ session.pdf
 # Generated outputs (regeneratable)
 outputs/
 data/normalized/
+instance/
 
 # IDE / editor
 .vscode/

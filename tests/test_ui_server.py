@@ -678,6 +678,19 @@ class TestPipelineIsolation(unittest.TestCase):
         self.assertNotIn("open(", src)  # no file I/O in app.py
         self.assertNotIn("ground_truth.csv", src)
 
+    def test_import_app_does_not_execute_reconciliation(self):
+        """Importing the app module must not execute reconciliation or build runtime state."""
+        import subprocess
+        import sys
+        code = (
+            "import app; "
+            "assert app._RUNTIME_STATE is None, 'Runtime state must not be initialized on import'; "
+            "print('OK')"
+        )
+        proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, f"Import executed reconciliation: {proc.stderr}")
+        self.assertIn("OK", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

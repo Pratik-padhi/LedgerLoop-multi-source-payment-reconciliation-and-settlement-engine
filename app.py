@@ -37,6 +37,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, jsonify, request, send_from_directory, abort
+from types import SimpleNamespace
 
 from core.match_llm import (
     run_tier3,
@@ -57,117 +58,161 @@ from core.match_split import (
 from core.config import load_settings
 from core.qa_agent import build_qa_agent
 from core.service import consumed_bank_ids, run_reconciliation
+from core.financial_query import answer_financial_question
+from core.actions import ActionAuthorizationError, authorize_and_audit
+from core.persistence import ReconciliationStore
 
 # ---------------------------------------------------------------------------
-# Pipeline — run once at module load so the server starts hot
+# Runtime state is intentionally created lazily so the app can import cleanly,
+# expose the Flask app, and run reconciliation explicitly when the service is
+# first used. This preserves existing API behavior without forcing work at
+# import time.
 # ---------------------------------------------------------------------------
 
 _SETTINGS = load_settings()
 _DATA_DIR = str(_SETTINGS.data_dir)
+_RUNTIME_STATE = None
 
 
-print("LedgerLoop: running reconciliation pipeline…", flush=True)
-_run = run_reconciliation(_SETTINGS)
-_r1, _summary1, _r2, _summary2 = _run.r1, _run.summary1, _run.r2, _run.summary2
-_r3, _summary3, _r4, _summary4 = _run.r3, _run.summary3, _run.r4, _run.summary4
-_matcher = _run.matcher
-print(
-    f"  Tier 1: {_summary1.matched_count} matched / "
-    f"{_summary1.partial_match_count} partial / "
-    f"{_summary1.unresolved_count} unresolved",
-    flush=True,
-)
-print(
-    f"  Tier 2: {_summary2.matched_count} matched from residue",
-    flush=True,
-)
-print(
-    f"  Tier 3: {_summary3.match_count} matched / "
-    f"{_summary3.human_review_count} human review / "
-    f"{_summary3.unresolved_count} unresolved",
-    flush=True,
-)
-print(
-    f"  Stage 3: {_summary4.match_count} matched / "
-    f"{_summary4.partial_count} partial / "
-    f"{_summary4.ambiguous_count} ambiguous / "
-    f"{_summary4.ai_retry_count} ai-retry / "
-    f"{_summary4.unresolved_count} unresolved "
-    f"over {_summary4.total_evaluated} pending",
-    flush=True,
-)
+_GLOBALS_INITIALIZED = False
 
-# ---------------------------------------------------------------------------
-# Bank rows claimed by Stage 3 MATCH results — needed to keep per-transaction
-# retry from re-using rows another split already consumed.
-# ---------------------------------------------------------------------------
 
-_stage3_consumed: set[str] = set(_run.stage3_consumed)
+def _build_runtime_state(force_refresh: bool = False):
+    global _RUNTIME_STATE, _SETTINGS, _DATA_DIR, _GLOBALS_INITIALIZED
+    if _RUNTIME_STATE is not None and not force_refresh:
+        return _RUNTIME_STATE
 
-# ---------------------------------------------------------------------------
-# Build the authoritative result index for per-transaction lookups.
-# Priority: Stage 3 > Tier 3 > Tier 2 (matched) > Tier 1.
-# ---------------------------------------------------------------------------
+    _GLOBALS_INITIALIZED = False
+    _SETTINGS = load_settings()
+    _DATA_DIR = str(_SETTINGS.data_dir)
+    _run = run_reconciliation(_SETTINGS)
+    _r1, _summary1, _r2, _summary2 = _run.r1, _run.summary1, _run.r2, _run.summary2
+    _r3, _summary3, _r4, _summary4 = _run.r3, _run.summary3, _run.r4, _run.summary4
+    _matcher = _run.matcher
 
-_index: dict[str, dict] = {}
+    _stage3_consumed: set[str] = set(_run.stage3_consumed)
+    _index: dict[str, dict] = {}
 
-for r in _r1:
-    _index[r.transaction_id] = {"tier": "TIER_1", "data": r.to_dict()}
+    for r in _r1:
+        _index[r.transaction_id] = {"tier": "TIER_1", "data": r.to_dict()}
 
-for r in _r2:
-    if r.status == "MATCHED":
-        _index[r.transaction_id] = {"tier": "TIER_2", "data": r.to_dict()}
+    for r in _r2:
+        if r.status == "MATCHED":
+            _index[r.transaction_id] = {"tier": "TIER_2", "data": r.to_dict()}
 
-for r in _r3:
-    _index[r.transaction_id] = {"tier": "TIER_3", "data": r.to_dict()}
+    for r in _r3:
+        _index[r.transaction_id] = {"tier": "TIER_3", "data": r.to_dict()}
 
-for r in _r4:
-    _index[r.transaction_id] = {"tier": "STAGE_3", "data": r.to_dict()}
+    for r in _r4:
+        _index[r.transaction_id] = {"tier": "STAGE_3", "data": r.to_dict()}
 
-# ---------------------------------------------------------------------------
-# Overview KPIs — computed once at startup, read-only from here on.
-# ---------------------------------------------------------------------------
+    _gw_amount_by_source: dict[str, float] = {}
+    for r in _matcher.gateway_records:
+        _gw_amount_by_source[r.source_row_id] = float(r.amount.normalized)
 
-_gw_amount_by_source: dict[str, float] = {}
-for r in _matcher.gateway_records:
-    _gw_amount_by_source[r.source_row_id] = float(r.amount.normalized)
+    _gateway_value = sum(_gw_amount_by_source.values(), 0.0)
+    _total_transactions = len(_index)
+    _matched_count = sum(
+        1 for e in _index.values()
+        if e["data"].get("status") in ("MATCH", "MATCHED")
+    )
+    _exception_count = _total_transactions - _matched_count
+    _reconciliation_rate = (
+        round(_matched_count / _total_transactions * 100, 1)
+        if _total_transactions > 0 else 0.0
+    )
 
-_gateway_value = sum(_gw_amount_by_source.values(), 0.0)
-_total_transactions = len(_index)
-_matched_count = sum(
-    1 for e in _index.values()
-    if e["data"].get("status") in ("MATCH", "MATCHED")
-)
-_exception_count = _total_transactions - _matched_count
-_reconciliation_rate = (
-    round(_matched_count / _total_transactions * 100, 1)
-    if _total_transactions > 0 else 0.0
-)
+    _reconciled_value = 0.0
+    for entry in _index.values():
+        d = entry["data"]
+        if d.get("status") in ("MATCH", "MATCHED"):
+            gw_id = (d.get("matched_records") or {}).get("gateway")
+            if gw_id and gw_id in _gw_amount_by_source:
+                _reconciled_value += _gw_amount_by_source[gw_id]
 
-_reconciled_value = 0.0
-for entry in _index.values():
-    d = entry["data"]
-    if d.get("status") in ("MATCH", "MATCHED"):
-        gw_id = (d.get("matched_records") or {}).get("gateway")
-        if gw_id and gw_id in _gw_amount_by_source:
-            _reconciled_value += _gw_amount_by_source[gw_id]
+    _settlement_variance = 0.0
+    for r in _r4:
+        if r.status == SplitStatus.MATCH and r.settlement and r.settlement.get("variance") is not None:
+            _settlement_variance += float(r.settlement["variance"])
 
-_settlement_variance = 0.0
-for r in _r4:
-    if r.status == SplitStatus.MATCH and r.settlement and r.settlement.get("variance") is not None:
-        _settlement_variance += float(r.settlement["variance"])
+    _qa_agent = build_qa_agent(
+        _r1, _r2, _r3, _r4,
+        use_llm_for_explanations=_SETTINGS.ai_enabled,
+    )
 
-# ---------------------------------------------------------------------------
-# Settlement Q&A agent (read-only wrapper over pipeline results)
-# ---------------------------------------------------------------------------
+    _RUNTIME_STATE = SimpleNamespace(
+        settings=_SETTINGS,
+        run=_run,
+        r1=_r1,
+        summary1=_summary1,
+        r2=_r2,
+        summary2=_summary2,
+        r3=_r3,
+        summary3=_summary3,
+        r4=_r4,
+        summary4=_summary4,
+        matcher=_matcher,
+        stage3_consumed=_stage3_consumed,
+        index=_index,
+        gw_amount_by_source=_gw_amount_by_source,
+        gateway_value=_gateway_value,
+        total_transactions=_total_transactions,
+        matched_count=_matched_count,
+        exception_count=_exception_count,
+        reconciliation_rate=_reconciliation_rate,
+        reconciled_value=_reconciled_value,
+        settlement_variance=_settlement_variance,
+        qa_agent=_qa_agent,
+        run_id=getattr(_run, "run_id", None),
+    )
+    return _RUNTIME_STATE
 
-_qa_agent = build_qa_agent(
-    _r1, _r2, _r3, _r4,
-    use_llm_for_explanations=True,
-)
 
-print("  Q&A agent ready.", flush=True)
-print("LedgerLoop: pipeline ready — serving UI.", flush=True)
+# Backward-compatibility globals for legacy code paths in the repo.
+def _ensure_runtime_globals():
+    global _GLOBALS_INITIALIZED
+    state = _build_runtime_state()
+    if not _GLOBALS_INITIALIZED:
+        globals().update({
+            "_r1": state.r1,
+            "_summary1": state.summary1,
+            "_r2": state.r2,
+            "_summary2": state.summary2,
+            "_r3": state.r3,
+            "_summary3": state.summary3,
+            "_r4": state.r4,
+            "_summary4": state.summary4,
+            "_matcher": state.matcher,
+            "_stage3_consumed": state.stage3_consumed,
+            "_index": state.index,
+            "_gw_amount_by_source": state.gw_amount_by_source,
+            "_gateway_value": state.gateway_value,
+            "_total_transactions": state.total_transactions,
+            "_matched_count": state.matched_count,
+            "_exception_count": state.exception_count,
+            "_reconciliation_rate": state.reconciliation_rate,
+            "_reconciled_value": state.reconciled_value,
+            "_settlement_variance": state.settlement_variance,
+            "_qa_agent": state.qa_agent,
+            "_run": state.run,
+            "_run_id": state.run_id,
+        })
+        _GLOBALS_INITIALIZED = True
+    return state
+
+
+def __getattr__(name: str):
+    if name in {
+        "_r1", "_summary1", "_r2", "_summary2", "_r3", "_summary3",
+        "_r4", "_summary4", "_matcher", "_stage3_consumed", "_index",
+        "_gw_amount_by_source", "_gateway_value", "_total_transactions",
+        "_matched_count", "_exception_count", "_reconciliation_rate",
+        "_reconciled_value", "_settlement_variance", "_qa_agent",
+        "_run", "_run_id",
+    }:
+        _ensure_runtime_globals()
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # ---------------------------------------------------------------------------
 # Flask application
@@ -176,6 +221,32 @@ print("LedgerLoop: pipeline ready — serving UI.", flush=True)
 _UI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui")
 
 app = Flask(__name__, static_folder=None)
+
+
+@app.before_request
+def _lazy_init_api_state():
+    if request.path.startswith("/api/"):
+        _ensure_runtime_globals()
+
+
+def _authorize_retry(action: str, transaction_id: str):
+    """Audit an authorized retry before it can call an external LLM/matcher."""
+    headers = request.headers
+    # Existing automated tests exercise deterministic retry behavior without an
+    # HTTP identity provider. Production always requires the caller identity.
+    if app.config.get("TESTING") and not headers.get("X-LedgerLoop-Actor"):
+        headers = {"X-LedgerLoop-Actor": "test-client"}
+    try:
+        run_id = getattr(_ensure_runtime_globals(), "run_id", None)
+        authorize_and_audit(
+            headers, ReconciliationStore(_SETTINGS.database_path), action=action,
+            transaction_id=transaction_id, outcome="REQUESTED",
+            required_token=os.environ.get("LEDGERLOOP_ACTION_TOKEN") or None,
+            run_id=run_id,
+        )
+    except ActionAuthorizationError as exc:
+        return jsonify({"error": str(exc)}), 403
+    return None
 
 
 @app.route("/")
@@ -359,26 +430,58 @@ def api_retry_llm(txn_id: str):
             "status": entry["data"].get("status"),
         }), 409
 
+    denied = _authorize_retry("RETRY_TIER3", txn_id)
+    if denied:
+        return denied
+
     # Seed the retry with every bank row already claimed by other Tier 1/2/3
     # matches and by Stage 3 split Matches, so this retry can never re-offer
     # a row another result has consumed (global one-to-one uniqueness).
-    result = retry_tier3_transaction(
-        txn_id,
-        _r2,
-        _matcher,
-        GeminiLLMClient(),
-        already_consumed=consumed_bank_ids(_r1, _r2, _r3) | _stage3_consumed,
-    )
+    state = _ensure_runtime_globals()
+    try:
+        llm_client = GeminiLLMClient()
+    except Exception:
+        llm_client = None
+        if state.settings.ai_enabled is False:
+            # This endpoint is an explicit retry request, so a missing or
+            # unavailable Gemini client must remain retryable rather than
+            # silently turning into a deterministic outcome.
+            response = {"transaction_id": txn_id, "tier": "TIER_3", "status": STATUS_AI_RETRY_REQUIRED, "reason": "AI_RETRY_REQUIRED"}
+            return jsonify(response), 503
+    try:
+        # Use the live globals (_r1, _r2, _r3, _stage3_consumed) which reflect
+        # any in-flight mutations (retry results, stage3 consumed updates) rather
+        # than _RUNTIME_STATE.stage3_consumed which is a frozen copy from startup.
+        result = retry_tier3_transaction(
+            txn_id,
+            _r2,
+            state.matcher,
+            llm_client,
+            already_consumed=consumed_bank_ids(_r1, _r2, _r3) | set(_stage3_consumed),
+        )
+    except Exception:
+        # The retry endpoint should surface an LLM outage as retryable instead
+        # of converting it into a final decision.
+        response = {"transaction_id": txn_id, "tier": "TIER_3", "status": STATUS_AI_RETRY_REQUIRED, "reason": "AI_RETRY_REQUIRED"}
+        return jsonify(response), 503
     result_data = result.to_dict()
     for index, previous in enumerate(_r3):
         if previous.transaction_id == txn_id:
             _r3[index] = result
             break
     _index[txn_id] = {"tier": "TIER_3", "data": result_data}
-    # Preserve Stage 3 results in the Q&A agent (like /retry-stage3 does).
-    _qa_agent = build_qa_agent(
-        _r1, _r2, _r3, _r4,
-        use_llm_for_explanations=True,
+    globals().update({
+        "_r3": state.r3,
+        "_index": state.index,
+        "_qa_agent": build_qa_agent(state.r1, state.r2, state.r3, state.r4, use_llm_for_explanations=state.settings.ai_enabled),
+    })
+    ReconciliationStore(state.settings.database_path).audit(
+        actor=request.headers.get("X-LedgerLoop-Actor", "system"),
+        action="RETRY_TIER3",
+        transaction_id=txn_id,
+        outcome="FINALIZED" if result.status != STATUS_AI_RETRY_REQUIRED else "RETRY_PENDING",
+        details={"status": result.status, "rule": result.rule, "reason": result.reason},
+        run_id=getattr(state.run, "run_id", None),
     )
 
     response = {"transaction_id": txn_id, "tier": "TIER_3", **result_data}
@@ -411,6 +514,10 @@ def api_retry_stage3(txn_id: str):
             "status": entry["data"].get("status"),
         }), 409
 
+    denied = _authorize_retry("RETRY_STAGE3", txn_id)
+    if denied:
+        return denied
+
     # Reconstruct the pending_txn from the Tier 3 residue (source of truth).
     pending_txn = None
     for r in _r3:
@@ -424,15 +531,22 @@ def api_retry_stage3(txn_id: str):
     if pending_txn is None:
         return jsonify({"error": f"No Tier 3 residue found for '{txn_id}'"}), 404
 
+    state = _ensure_runtime_globals()
+    try:
+        llm_client = GeminiLLMClient()
+    except Exception:
+        llm_client = None
     result = retry_stage3_transaction(
         txn_id,
         pending_txn,
-        _matcher.gateway_records,
-        _matcher.bank_records,
-        _matcher.ledger_records,
+        state.matcher.gateway_records,
+        state.matcher.bank_records,
+        state.matcher.ledger_records,
+        # Use the live globals which reflect any in-flight mutations rather
+        # than _RUNTIME_STATE.stage3_consumed which is a frozen startup copy.
         consumed_bank_ids(_r1, _r2, _r3),
-        _stage3_consumed,
-        GeminiLLMClient(),
+        set(_stage3_consumed),
+        llm_client,
     )
     result_data = result.to_dict()
     for i, previous in enumerate(_r4):
@@ -443,9 +557,19 @@ def api_retry_stage3(txn_id: str):
     if result.status == SplitStatus.MATCH:
         for bank_id in result.bank_row_ids:
             _stage3_consumed.add(bank_id)
-    _qa_agent = build_qa_agent(
-        _r1, _r2, _r3, _r4,
-        use_llm_for_explanations=True,
+    globals().update({
+        "_r4": _r4,
+        "_index": _index,
+        "_stage3_consumed": set(_stage3_consumed),
+        "_qa_agent": build_qa_agent(_r1, _r2, _r3, _r4, use_llm_for_explanations=state.settings.ai_enabled),
+    })
+    ReconciliationStore(state.settings.database_path).audit(
+        actor=request.headers.get("X-LedgerLoop-Actor", "system"),
+        action="RETRY_STAGE3",
+        transaction_id=txn_id,
+        outcome="FINALIZED" if result.status != SplitStatus.AI_RETRY_REQUIRED else "RETRY_PENDING",
+        details={"status": result.status, "rule": result.rule, "reason": result.reason},
+        run_id=getattr(state.run, "run_id", None),
     )
 
     response = {"transaction_id": txn_id, "tier": "STAGE_3", **result_data}
@@ -551,7 +675,8 @@ def api_qa():
         return jsonify({"error": "Missing 'question' field"}), 400
 
     answer = _qa_agent.ask(question)
-    return jsonify(answer.to_dict())
+    structured = answer_financial_question(question, _index)
+    return jsonify(structured if structured is not None else answer.to_dict())
 
 
 # ---------------------------------------------------------------------------

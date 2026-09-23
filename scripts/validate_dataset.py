@@ -293,7 +293,7 @@ def report():
         for w in warnings:
             print(f"  ! {w}")
     if not errors:
-        print("✓ All validation checks passed.")
+        print("All validation checks passed.")
     print()
     sys.exit(1 if errors else 0)
 

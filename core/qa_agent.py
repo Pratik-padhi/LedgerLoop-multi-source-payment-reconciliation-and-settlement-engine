@@ -166,7 +166,25 @@ class QAAnswer:
     llm_unavailable: bool              # True if Gemini was needed but missing/failed
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        payload = asdict(self)
+        citations = []
+        seen = set()
+        for entry in self.retrieved_data:
+            data = entry.get("data", entry)
+            txn = entry.get("transaction_id") or data.get("transaction_id")
+            tier = entry.get("tier")
+            for source, row_id in (data.get("matched_records") or {}).items():
+                key = (txn, tier, source, row_id)
+                if row_id and key not in seen:
+                    seen.add(key)
+                    citations.append({"transaction_id": txn, "tier": tier, "source": source, "source_row_id": row_id})
+            for row_id in data.get("bank_row_ids", []):
+                key = (txn, tier, "bank", row_id)
+                if row_id and key not in seen:
+                    seen.add(key)
+                    citations.append({"transaction_id": txn, "tier": tier, "source": "bank", "source_row_id": row_id})
+        payload["citations"] = citations
+        return payload
 
 
 # ===========================================================================

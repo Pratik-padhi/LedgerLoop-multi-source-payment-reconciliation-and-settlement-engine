@@ -19,7 +19,7 @@ Every result is structured for auditability as **Status -> Reason -> Evidence ->
 
 ## Current demo dataset
 
-The repository includes a synthetic dataset of 111 logical transactions across 116 gateway rows, 111 bank rows, and 117 ledger rows. It includes normal exact matches, settlement delays, rounding differences, reference formatting, TDS mismatches, refunds, duplicate ledger entries, missing counterparts, orphan records, and Tier 3 cases requiring human review or LLM-assisted adjudication. `ground_truth.csv` is evaluation-only and is never consulted during matching.
+The repository includes a synthetic dataset of 111 logical transactions across 115 gateway rows, 110 bank rows, and 116 ledger rows (excluding CSV headers). It includes normal exact matches, settlement delays, rounding differences, reference formatting, TDS mismatches, refunds, duplicate ledger entries, missing counterparts, orphan records, and Tier 3 cases requiring human review or LLM-assisted adjudication. `ground_truth.csv` is evaluation-only and is never consulted during matching.
 
 ## Run locally
 
@@ -52,6 +52,25 @@ Generated inspection reports are kept out of the source tree's main surfaces:
 written under ignored subdirectories of `data/`.
 
 For deterministic offline tests, leave `GEMINI_API_KEY` unset. The pipeline safely falls back to human review when Gemini is unavailable.
+
+## Reproducible offline demo
+
+```powershell
+$env:LLM_PROVIDER=""
+Remove-Item Env:GEMINI_API_KEY -ErrorAction SilentlyContinue
+python scripts/validate_dataset.py
+python -m pytest -q
+python app.py
+```
+
+Completed runs persist to `instance/ledgerloop.sqlite3` by default (override
+with `LEDGERLOOP_DATABASE`). It stores pipeline snapshots and audit records,
+not source secrets or ground truth. Financial Q&A returns stored deterministic
+settlement values only when available and includes source-row citations.
+
+Schema adapters (`core.adapters.SourceSchema`) require explicit mappings; this
+is not universal CSV support. Shared deployments should require a named
+`X-LedgerLoop-Actor` and configure an action token before stateful actions.
 
 ## Gemini configuration
 

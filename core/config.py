@@ -19,6 +19,8 @@ class Settings:
     gemini_model: str
     gemini_models: tuple[str, ...]
     gemini_enabled: bool
+    ai_enabled: bool
+    database_path: Path
 
     @property
     def dataset_name(self) -> str:
@@ -45,6 +47,13 @@ def load_settings(project_dir: str | os.PathLike[str] | None = None) -> Settings
         model = DEFAULT_GEMINI_MODEL
     configured_models = _csv_values(os.environ.get("GEMINI_MODELS"))
     models = tuple(dict.fromkeys((model, *configured_models)))
+    configured_database = os.environ.get("LEDGERLOOP_DATABASE")
+    database_path = Path(configured_database) if configured_database else root / "instance" / "ledgerloop.sqlite3"
+    if not database_path.is_absolute():
+        database_path = root / database_path
+
+    explicit_ai = os.environ.get("LEDGERLOOP_ENABLE_AI", "").strip().lower() in {"1", "true", "yes", "on"}
+    ai_enabled = explicit_ai and (provider == "gemini" or bool(os.environ.get("GEMINI_API_KEY")))
 
     return Settings(
         project_dir=root,
@@ -53,4 +62,6 @@ def load_settings(project_dir: str | os.PathLike[str] | None = None) -> Settings
         gemini_model=model,
         gemini_models=models,
         gemini_enabled=provider == "gemini" or bool(os.environ.get("GEMINI_API_KEY")),
+        ai_enabled=ai_enabled,
+        database_path=database_path,
     )
