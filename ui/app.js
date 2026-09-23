@@ -56,7 +56,44 @@ function fmtMoney(v) {
 function pct(v) { return (v == null || isNaN(v)) ? "0.0" : Number(v).toFixed(1); }
 
 function errHtml(msg) { return '<div class="error-msg">Could not load data — ' + esc(msg) + '</div>'; }
-function loadingHtml(msg) { return '<div class="loading">' + esc(msg || "Loading…") + '</div>'; }
+function loadingHtml(msg) { return '<div class="loading" role="status" aria-live="polite">' + esc(msg || "Loading…") + '</div>'; }
+
+async function fetchJson(path, options) {
+  var res = await fetch(API + path, options);
+  var data = null;
+  try { data = await res.json(); } catch (_) { /* response may not be JSON */ }
+  if (!res.ok) {
+    var message = (data && data.error) || res.statusText || "Request failed (" + res.status + ")";
+    var error = new Error(message);
+    error.status = res.status;
+    error.payload = data;
+    throw error;
+  }
+  return data;
+}
+
+function retryErrorHtml(msg, action) {
+  return '<div class="error-state" role="alert">' +
+    '<div class="error-state-copy"><strong>Data unavailable</strong><span>' + esc(msg) + '</span></div>' +
+    '<button class="btn btn-secondary btn-sm" data-retry-action="' + esc(action) + '">Retry</button>' +
+  '</div>';
+}
+
+function setPipelineStatus(text, state) {
+  var el = document.getElementById("pipeline-status");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "sidebar-status-pill status-" + (state || "ready");
+}
+
+function attachRetryAction(action, handler) {
+  var button = document.querySelector("[data-retry-action=" + action + "]");
+  if (button) button.addEventListener("click", handler);
+}
+
+function attachOverviewRetry() {
+  attachRetryAction("overview", loadOverview);
+}
 
 /* ── Theme ───────────────────────────────────────────────── */
 
@@ -98,7 +135,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
 function switchPanel(pid) {
   document.querySelectorAll(".nav-item").forEach(function (n) {
-    n.classList.toggle("active", n.dataset.panel === pid);
+    var active = n.dataset.panel === pid;
+    n.classList.toggle("active", active);
+    n.setAttribute("aria-current", active ? "page" : "false");
   });
   document.querySelectorAll(".panel").forEach(function (p) {
     p.classList.toggle("active", p.id === "panel-" + pid);
@@ -116,6 +155,11 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!btn) return;
     switchPanel(btn.dataset.panel);
   });
+
+  document.addEventListener("click", function (e) {
+    var jump = e.target.closest("[data-jump-panel]");
+    if (jump) switchPanel(jump.dataset.jumpPanel);
+  });
 });
 
 /* ════════════════════════════════════════════════════════════
@@ -124,12 +168,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
 async function loadOverview() {
   var el = document.getElementById("overview-content");
+  el.innerHTML = loadingHtml("Preparing reconciliation data…");
+  setPipelineStatus("Loading data", "loading");
   try {
-    var res = await fetch(API + "/api/overview");
-    if (!res.ok) throw new Error(res.statusText);
-    _overview = await res.json();
+    _overview = await fetchJson("/api/overview");
+    setPipelineStatus("Run ready", "ready");
   } catch (err) {
-    el.innerHTML = errHtml(err.message);
+    setPipelineStatus("Data unavailable", "error");
+    el.innerHTML = retryErrorHtml(err.message, "overview");
+    attachOverviewRetry();
     return;
   }
   renderOverview();
@@ -142,81 +189,94 @@ function renderOverview() {
   var hr  = sc.HUMAN_REVIEW || 0;
   var unr = sc.UNRESOLVED || 0;
   var aiRetry = sc.AI_RETRY_REQUIRED || 0;
-  var mt  = sc.MATCH || sc.MATCHED || 0;
-  var prt = sc.PARTIAL_MATCH || 0;
-  var uft = sc.UNRESOLVED_FOR_TIER_1 || 0;
   var total = d.total_transactions;
+  var exc = Number(d.exception_count || 0);
 
-  // Nav badge
-  var badgeCount = hr + unr + aiRetry;
+  // The API owns the authoritative exception count; keep navigation and CTA
+  // counts consistent with the complete exception queue.
   var badge = document.getElementById("exc-badge");
   if (badge) {
-    if (badgeCount > 0) { badge.textContent = badgeCount; badge.style.display = ""; }
+    if (exc > 0) { badge.textContent = exc; badge.style.display = ""; }
     else badge.style.display = "none";
   }
+  var ctaCount = document.getElementById("overview-exception-cta-count");
+  if (ctaCount) ctaCount.textContent = exc > 0 ? "(" + exc + ")" : "";
 
-  // Subtitle with dataset info
   var sub = document.getElementById("overview-subtitle");
   if (sub) {
     var ds = d.dataset || "data";
     var gwR = d.gateway_rows || 0;
     var bnR = d.bank_rows || 0;
     var lgR = d.ledger_rows || 0;
-    sub.textContent = "Dataset: " + ds + " · " + gwR + " gateway · " + bnR + " bank · " + lgR + " ledger rows";
+    sub.textContent = "Gateway ↔ Bank ↔ Ledger · " + ds + " · " + gwR + " gateway · " + bnR + " bank · " + lgR + " ledger rows · deterministic-first";
   }
 
   var tc = d.tier_counts || {};
   var gw = d.gateway_value;
   var rv = d.reconciled_value;
   var rate = d.reconciliation_rate;
-  var exc = d.exception_count;
   var variance = d.settlement_variance;
   var ratePct = pct(rate);
   var rateVal = Math.min(Math.max(parseFloat(ratePct), 0), 100);
 
-  // ── KPI Grid ────────────────────────────────────────────
+  // Primary run-health metrics stay in the first viewport. Secondary
+  // exception diagnostics remain available without competing with them.
   var kpiHtml =
-    '<div class="stats-grid">' +
+    '<div class="section-label">Run health</div>' +
+    '<div class="stats-grid stats-grid-primary">' +
       '<div class="stat-card"><div class="stat-accent match"></div><div class="label">Total Transactions</div><div class="value">' + total + '</div>' +
         '<div class="sub">' + tierChips(tc) + '</div></div>' +
-      '<div class="stat-card"><div class="label">Gateway Value</div><div class="value">' + fmtMoney(gw) + '</div></div>' +
-      '<div class="stat-card match"><div class="stat-accent match"></div><div class="label">Reconciled Value</div><div class="value">' + fmtMoney(rv) + '</div></div>' +
+      '<div class="stat-card"><div class="label">Gateway Gross Value</div><div class="value">' + fmtMoney(gw) + '</div>' +
+        '<div class="sub">captured source value</div></div>' +
+      '<div class="stat-card match"><div class="stat-accent match"></div><div class="label">Reconciled Gateway Value</div><div class="value">' + fmtMoney(rv) + '</div>' +
+        '<div class="sub">matched gateway value</div></div>' +
       '<div class="stat-card match"><div class="stat-accent match"></div><div class="label">Reconciliation Rate</div><div class="value">' + ratePct + '%</div>' +
         '<div class="sub"><div class="confidence-bar" style="flex:1"><div class="confidence-fill" style="width:' + rateVal + '%"></div></div></div></div>' +
+    '</div>' +
+    '<div class="section-label">Attention and settlement detail</div>' +
+    '<div class="stats-grid stats-grid-secondary">' +
       '<div class="stat-card unresolved"><div class="stat-accent unresolved"></div><div class="label">Exceptions</div><div class="value">' + exc + '</div>' +
         '<div class="sub">requiring attention</div></div>' +
       '<div class="stat-card review"><div class="stat-accent review"></div><div class="label">Human Review</div><div class="value">' + hr + '</div></div>' +
       '<div class="stat-card review"><div class="stat-accent review"></div><div class="label">AI Retry Required</div><div class="value">' + aiRetry + '</div></div>' +
-      '<div class="stat-card"><div class="label">Settlement Variance</div><div class="value' + ((variance && Math.abs(variance) > 0.01) ? ' negative' : ' positive') + '">' + fmtMoney(variance) + '</div></div>' +
+      '<div class="stat-card"><div class="label">Stage 3 Settlement Variance</div><div class="value' + ((variance && Math.abs(variance) > 0.01) ? ' negative' : ' positive') + '">' + fmtMoney(variance) + '</div>' +
+        '<div class="sub">split-settlement scope</div></div>' +
     '</div>';
 
-  // ── Pipeline Funnel ──────────────────────────────────────
-  var funnelHtml = '<div class="card" style="margin-bottom:1rem"><div class="card-head"><h3>Reconciliation Pipeline</h3></div><div class="card-body" style="padding:0.25rem 0.5rem">' +
+  var demoGuideHtml = '<div class="card demo-guide"><div class="demo-guide-copy"><h3>Explore this reconciliation run</h3>' +
+    '<p>Synthetic demo profile · ' + esc(d.dataset || "data") + ' · no upload or Gemini key required.</p></div>' +
+    '<div class="demo-step-list">' +
+      '<button class="demo-step" data-jump-panel="exceptions"><span>01</span><strong>Review exceptions</strong><small>Inspect evidence and next actions</small></button>' +
+      '<button class="demo-step" data-jump-panel="transactions"><span>02</span><strong>Explore transactions</strong><small>Trace source rows and settlement details</small></button>' +
+      '<button class="demo-step" data-jump-panel="qa"><span>03</span><strong>Ask Settlement Intelligence</strong><small>Query grounded results and request read-only AI review</small></button>' +
+    '</div></div>';
+
+  var funnelHtml = '<div class="card overview-section-gap"><div class="card-head"><h3>Reconciliation Pipeline</h3></div><div class="card-body funnel-body">' +
     pipelineFunnelHtml(d) +
     '</div></div>';
 
-  // ── Second row: Exception distribution + LLM ─────────────
   var secondRow =
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:1rem">' +
-      '<div class="card"><div class="card-head"><h3>Exception Distribution</h3></div><div class="card-body" style="padding:0.75rem">' +
+    '<div class="overview-two-column overview-section-gap">' +
+      '<div class="card"><div class="card-head"><h3>Exception Distribution</h3></div><div class="card-body overview-card-body">' +
         exceptionDistHtml(sc) +
       '</div></div>' +
-      '<div class="card"><div class="card-head"><h3>LLM Usage</h3></div><div class="card-body" style="padding:0.75rem">' +
+      '<div class="card"><div class="card-head"><h3>AI Governance and Usage</h3></div><div class="card-body overview-card-body">' +
+        '<p class="card-note">Deterministic rules and independent validators remain authoritative. AI is used only for explicit investigation or explanation.</p>' +
         '<table class="x-table"><tbody>' +
           '<tr><td>Gemini calls made</td><td class="num">' + (d.llm_calls_made || 0) + '</td></tr>' +
           '<tr><td>Recommendations validated</td><td class="num">' + (d.llm_recommendations_validated || 0) + '</td></tr>' +
           '<tr><td>Recommendations rejected</td><td class="num">' + (d.llm_recommendations_rejected || 0) + '</td></tr>' +
-          (d.llm_models && d.llm_models.length ? '<tr><td>Model chain</td><td class="num" style="font-size:0.7rem;white-space:nowrap">' + d.llm_models.map(function (m) { return esc(m); }).join(' <span style="color:var(--text-4)">→</span> ') + '</td></tr>' : '') +
-        '</tbody></table></div></div>' +
+          (d.llm_models && d.llm_models.length ? '<tr><td>Configured model chain</td><td class="num model-chain">' + d.llm_models.map(function (m) { return esc(m); }).join(' <span style="color:var(--text-4)">→</span> ') + '</td></tr>' : '') +
+        '</tbody></table>' +
+      '</div></div>' +
     '</div>';
 
-  // ── Third row: Top Rules ─────────────────────────────────
   var thirdRow =
-    '<div class="card"><div class="card-head"><h3>Top Reconciliation Rules</h3></div><div class="card-body" style="padding:0.75rem">' +
+    '<div class="card"><div class="card-head"><h3>Top Reconciliation Rules</h3></div><div class="card-body overview-card-body">' +
       rulesHtml(d) +
     '</div></div>';
 
-  el.innerHTML = kpiHtml + funnelHtml + secondRow + thirdRow;
+  el.innerHTML = kpiHtml + demoGuideHtml + funnelHtml + secondRow + thirdRow;
 }
 
 function tierChips(tc) {
@@ -240,10 +300,10 @@ function pipelineFunnelHtml(d) {
   var t3Residue = t3.total_residue || 0;
 
   var stages = [
-    { label: "Tier 1 · Exact Match", value: t1.matched_count || 0, sub: (t1.partial_match_count || 0) + " partial", residue: t1Residue, input: t1Input },
-    { label: "Tier 2 · Tolerance", value: t2.matched_count || 0, sub: "from residue", residue: t2Residue, input: t2.total_residue || 0 },
-    { label: "Tier 3 · LLM-Assisted", value: t3.match_count || 0, sub: (t3.human_review_count || 0) + " review", residue: t3.total_residue || 0, input: t3.total_residue || 0 },
-    { label: "Stage 3 · Split / Multi", value: t4.match_count || 0, sub: (t4.partial_count || 0) + " partial", residue: t4.unresolved_count || 0, input: t4.total_evaluated || 0 },
+    { label: "Tier 1 · Exact evidence", value: t1.matched_count || 0, sub: (t1.partial_match_count || 0) + " partial", residue: t1Residue, input: t1Input },
+    { label: "Tier 2 · Bounded tolerance", value: t2.matched_count || 0, sub: "from residue", residue: t2Residue, input: t2.total_residue || 0 },
+    { label: "Tier 3 · Linked evidence / guarded AI", value: t3.match_count || 0, sub: (t3.human_review_count || 0) + " review", residue: t3.total_residue || 0, input: t3.total_residue || 0 },
+    { label: "Stage 3 · Split settlement", value: t4.match_count || 0, sub: (t4.partial_count || 0) + " partial", residue: t4.unresolved_count || 0, input: t4.total_evaluated || 0 },
   ];
 
   var html = '<div class="pipeline-funnel">';
@@ -302,12 +362,12 @@ function rulesHtml(d) {
 
 async function loadExceptions() {
   var el = document.getElementById("exceptions-content");
+  el.innerHTML = loadingHtml("Loading exception queue…");
   try {
-    var res = await fetch(API + "/api/exceptions");
-    if (!res.ok) throw new Error(res.statusText);
-    _exceptions = await res.json();
+    _exceptions = await fetchJson("/api/exceptions");
   } catch (err) {
-    el.innerHTML = errHtml(err.message);
+    el.innerHTML = retryErrorHtml(err.message, "exceptions");
+    attachRetryAction("exceptions", loadExceptions);
     return;
   }
   _selectedExc = null;
@@ -342,16 +402,17 @@ function renderExceptions(filter) {
   if (items.length === 0) {
     html += '<div class="empty-msg">No exceptions in this category</div>';
   } else {
-    html += '<table class="x-table"><thead><tr><th>Transaction</th><th>Status</th><th>Rule</th></tr></thead><tbody>';
+    html += '<table class="x-table exc-table"><thead><tr><th>Transaction</th><th>Status</th><th>Amount</th><th>Reason</th></tr></thead><tbody>';
     items.forEach(function (e) {
       var sel = _selectedExc === e.transaction_id ? " selected" : "";
       html += '<tr data-tid="' + esc(e.transaction_id) + '" class="' + sel + '">' +
-        '<td>' + esc(e.transaction_id) +
+        '<td><span class="table-primary">' + esc(e.transaction_id) + '</span>' +
           (e.tier ? ' ' + tierChip(e.tier) : '') +
-          (e.llm_consulted ? ' <span class="chip chip-tier" style="margin-left:2px">LLM</span>' : '') +
+          (e.llm_consulted ? ' <span class="chip chip-tier" style="margin-left:2px">AI history</span>' : '') +
         '</td>' +
         '<td>' + chip(e.status) + '</td>' +
-        '<td style="font-size:0.7rem;color:var(--text-3)">' + esc(e.rule || "—") + '</td></tr>';
+        '<td class="num">' + fmtMoney(e.gateway_amount) + '</td>' +
+        '<td class="table-reason"><span>' + esc(e.reason || e.rule || "—") + '</span></td></tr>';
     });
     html += '</tbody></table>';
   }
@@ -389,13 +450,19 @@ async function loadExcDetail(tid) {
     var res = await fetch(API + "/api/transaction/" + encodeURIComponent(tid));
     if (!res.ok) {
       var err = await res.json().catch(function () { return {}; });
-      box.innerHTML = '<div class="empty-msg">' + esc(err.error || "Not found") + '</div>';
+      if (res.status === 404) {
+        box.innerHTML = '<div class="empty-msg">' + esc(err.error || "Not found") + '</div>';
+      } else {
+        box.innerHTML = retryErrorHtml(err.error || res.statusText || "Unable to load transaction", "exc-detail");
+        attachRetryAction("exc-detail", function () { loadExcDetail(tid); });
+      }
       return;
     }
     box.innerHTML = renderDetail(await res.json());
     attachRetryListeners(tid, box);
   } catch (err) {
-    box.innerHTML = '<div class="empty-msg">' + esc(err.message) + '</div>';
+    box.innerHTML = retryErrorHtml(err.message, "exc-detail");
+    attachRetryAction("exc-detail", function () { loadExcDetail(tid); });
   }
 }
 
@@ -405,12 +472,12 @@ async function loadExcDetail(tid) {
 
 async function loadTransactions() {
   var el = document.getElementById("transactions-content");
+  el.innerHTML = loadingHtml("Loading transaction explorer…");
   try {
-    var res = await fetch(API + "/api/transactions");
-    if (!res.ok) throw new Error(res.statusText);
-    _transactions = await res.json();
+    _transactions = await fetchJson("/api/transactions");
   } catch (err) {
-    el.innerHTML = errHtml(err.message);
+    el.innerHTML = retryErrorHtml(err.message, "transactions");
+    attachRetryAction("transactions", loadTransactions);
     return;
   }
   _txSort = { field: null, dir: "asc" };
@@ -624,7 +691,7 @@ async function retryGemini(tid, button) {
     loadExcDetail(tid);
   } catch (err) {
     button.disabled = false;
-    button.textContent = "↻ Retry Gemini";
+    button.textContent = "↻ Retry adjudication";
     alert("Retry failed: " + err.message);
   }
 }
@@ -646,9 +713,62 @@ async function retryStage3(tid, button) {
     loadExcDetail(tid);
   } catch (err) {
     button.disabled = false;
-    button.textContent = "↻ Retry Stage 3";
+    button.textContent = "↻ Retry split adjudication";
     alert("Retry failed: " + err.message);
   }
+}
+
+function humanizeKey(key) {
+  return String(key || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+}
+
+function evidenceText(value) {
+  if (value === null || value === undefined) return "—";
+  if (Array.isArray(value)) return "[" + value.map(evidenceText).join(", ") + "]";
+  if (typeof value === "object") {
+    return Object.entries(value).map(function (pair) {
+      return humanizeKey(pair[0]) + ": " + evidenceText(pair[1]);
+    }).join(" · ");
+  }
+  return String(value);
+}
+
+function evidenceValueHtml(value) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "—";
+    return '<div class="evidence-list">' + value.map(function (item) {
+      return '<span class="evidence-chip">' + esc(evidenceText(item)) + "</span>";
+    }).join("") + "</div>";
+  }
+  if (value !== null && typeof value === "object") {
+    return '<div class="evidence-nested">' + Object.entries(value).map(function (pair) {
+      return "<div><strong>" + esc(humanizeKey(pair[0])) + ":</strong> " + esc(evidenceText(pair[1])) + "</div>";
+    }).join("") + "</div>";
+  }
+  return esc(evidenceText(value));
+}
+
+function nextActionText(d) {
+  if (d.status === "AI_RETRY_REQUIRED") return "Retry adjudication if authorized; otherwise keep the transaction in review.";
+  if (d.status === "PARTIAL_PAYMENT") return "Review the received amount against the outstanding settlement.";
+  if (d.status === "HUMAN_REVIEW") return "Review the evidence and candidate rows before deciding.";
+  if (d.status === "UNRESOLVED") return "Check source coverage; no sufficient evidence is currently available.";
+  return "No exception action is required for this result.";
+}
+
+function sourceRowsHtml(matchedRecords, bankRowIds) {
+  var rows = [];
+  if (matchedRecords.gateway) rows.push(["Gateway", matchedRecords.gateway]);
+  if (matchedRecords.bank) rows.push(["Bank", matchedRecords.bank]);
+  if (matchedRecords.ledger) rows.push(["Ledger", matchedRecords.ledger]);
+  (bankRowIds || []).forEach(function (id) { rows.push(["Bank", id]); });
+  if (!rows.length) return "";
+  return '<div class="evidence-block"><h4>Source Rows</h4><div class="source-row-chips">' +
+    rows.map(function (row) {
+      return '<span class="source-row-chip"><strong>' + esc(row[0]) + "</strong> " + esc(row[1]) + "</span>";
+    }).join("") + "</div></div>";
 }
 
 function renderDetail(d) {
@@ -662,13 +782,13 @@ function renderDetail(d) {
   var settlement = d.settlement || {};
   var isStage3 = d.tier === "STAGE_3";
 
-  // Settlement breakdown
   var settlementBlock = "";
   if (isStage3 && settlement && Object.keys(settlement).length > 0) {
     settlementBlock = '<div class="settlement-block"><h4>Settlement Breakdown</h4><div class="settlement-grid">' +
       settlementItem("Gross", settlement.gross_amount, "") +
       settlementItem("GST", settlement.gst_amount, "positive") +
       settlementItem("TDS", settlement.tds_amount, "negative") +
+      settlementItem("MDR", settlement.mdr_amount, "negative") +
       settlementItem("Fees", settlement.total_fee_amount, "negative") +
       settlementItem("Refund", settlement.refund_amount, "negative") +
       settlementItem("Expected Net", settlement.expected_net_amount, "") +
@@ -678,7 +798,6 @@ function renderDetail(d) {
     '</div></div>';
   }
 
-  // Partial payment
   var partialBlock = "";
   if (isStage3 && d.status === "PARTIAL_PAYMENT") {
     partialBlock = detailField("Received", fmtMoney(d.received)) +
@@ -686,7 +805,6 @@ function renderDetail(d) {
       detailField("Expected Net", fmtMoney(d.expected_net));
   }
 
-  // Bank rows
   var bankHtml = "";
   if (isStage3 && bankRowIds.length > 0) {
     bankHtml = '<div class="detail-field"><div class="df-label">Bank Row(s)</div><div class="bank-rows">';
@@ -695,65 +813,58 @@ function renderDetail(d) {
     });
     bankHtml += '</div></div>';
   } else {
-    bankHtml = detailField("Bank Row", bn);
+    bankHtml = detailField("Bank Row", esc(bn));
   }
 
-  // LLM block
   var llmBlock = "";
   if (d.llm_consulted !== undefined) {
     var rec = d.llm_recommendation;
-    llmBlock = '<div class="evidence-block"><h4>AI Adjudication</h4>' +
-      '<div class="ev-row"><span class="ek">LLM Consulted</span><span class="ev">' + (d.llm_consulted ? "Yes" : "No") + '</span></div>' +
-      (d.confidence != null ? '<div class="ev-row"><span class="ek">Confidence</span><span class="ev">' + pct(d.confidence * 100) + '%</span></div>' : '') +
+    llmBlock = '<div class="evidence-block"><h4>AI History</h4>' +
+      '<div class="ev-row"><span class="ek">AI consulted</span><span class="ev">' + (d.llm_consulted ? "Yes" : "No") + '</span></div>' +
+      (d.confidence != null ? '<div class="ev-row"><span class="ek">Advisory confidence</span><span class="ev">' + pct(d.confidence * 100) + '%</span></div>' : '') +
       (rec ? '<div class="ev-row"><span class="ek">Recommendation</span><span class="ev">' +
-        esc(rec.decision || "—") + ' — bank IDs: ' + esc(JSON.stringify(rec.bank_row_ids || [])) + '</span></div>' : '') +
-      '</div>';
+        esc(rec.decision || "—") + " — bank IDs: " + evidenceValueHtml(rec.bank_row_ids || []) + "</span></div>" : '') +
+      "</div>";
   }
 
-  // Confidence bar
   var confHtml = "";
   if (d.confidence != null) {
     var p = Math.round(d.confidence * 100);
     var cls = p < 50 ? "critical" : (p < 75 ? "low" : "");
-    confHtml = detailField("Confidence",
+    confHtml = detailField("Advisory confidence",
       '<div class="confidence-bar"><div class="confidence-fill ' + cls + '" style="width:' + p + '%"></div></div><span style="font-size:0.75rem;color:var(--text-3)">' + p + '%</span>');
   }
 
-  // Retry button
   var retryBtn = "";
   if (d.status === "AI_RETRY_REQUIRED") {
     if (d.tier === "TIER_3")
-      retryBtn = '<button class="retry-btn" data-retry-llm>↻ Retry Gemini</button>';
+      retryBtn = '<button class="retry-btn" data-retry-llm>↻ Retry adjudication</button>';
     else if (d.tier === "STAGE_3")
-      retryBtn = '<button class="retry-btn" data-retry-stage3>↻ Retry Stage 3</button>';
+      retryBtn = '<button class="retry-btn" data-retry-stage3>↻ Retry split adjudication</button>';
   }
-  var reviewBtn = '<button class="retry-btn" data-ai-review>AI Review</button>';
+  var reviewBtn = '<button class="retry-btn" data-ai-review>Review with AI · read-only</button>';
 
   return '<div class="detail-card">' +
     '<div class="detail-head">' +
-      '<span class="detail-tid">' + esc(d.transaction_id || "—") + '</span>' +
-      chip(d.status) + tierChip(d.tier) +
-      retryBtn + reviewBtn +
-    '</div>' +
-    '<div class="detail-body"><div class="detail-grid"><div>' +
+      '<span class="detail-tid">' + esc(d.transaction_id || "—") + "</span>" +
+      chip(d.status) + tierChip(d.tier) + retryBtn + reviewBtn +
+    "</div>" +
+    '<div class="detail-body"><div class="next-action"><span>Next best action</span><strong>' + esc(nextActionText(d)) + "</strong></div>" +
+    '<div class="detail-grid"><div>' +
       detailField("Status", statusDot(d.status)) +
-      detailField("Rule", d.rule || "—") +
-      detailField("Reason", d.reason || "—") +
+      detailField("Rule", esc(d.rule || "—")) +
+      detailField("Reason", esc(d.reason || "—")) +
       confHtml +
-      detailField("Gateway Row", gw) +
-      bankHtml +
-      detailField("Ledger Row", lg) +
-      partialBlock +
-    '</div><div>' +
-      settlementBlock +
+      detailField("Gateway Row", esc(gw)) + bankHtml + detailField("Ledger Row", esc(lg)) + partialBlock +
+    "</div><div>" +
+      settlementBlock + sourceRowsHtml(mr, bankRowIds) +
       (evEntries.length > 0 ?
         '<div class="evidence-block"><h4>Evidence</h4>' +
         evEntries.map(function (pair) {
-          var val = typeof pair[1] === "object" ? JSON.stringify(pair[1]) : pair[1];
-          return '<div class="ev-row"><span class="ek">' + esc(pair[0]) + '</span><span class="ev">' + esc(val) + '</span></div>';
-        }).join("") + '</div>' : '') +
+          return '<div class="ev-row"><span class="ek">' + esc(humanizeKey(pair[0])) + '</span><span class="ev">' + evidenceValueHtml(pair[1]) + "</span></div>";
+        }).join("") + "</div>" : "") +
       llmBlock + '<div data-ai-review-result></div>' +
-    '</div></div></div></div>';
+    "</div></div></div></div>";
 }
 
 function settlementItem(label, value, cls) {
@@ -769,13 +880,11 @@ function detailField(label, content) {
    Q&A / Settlement Intelligence — Chat Interface
    ════════════════════════════════════════════════════════════ */
 
-var _chatReviewMode = false;
-
 var _chatSuggestions = [
+  "What happened to PAY109?",
+  "What is the variance for PAY109?",
   "Which transactions need human review?",
   "Show unresolved transactions.",
-  "What happened to PAY109?",
-  "Which matched by split settlement rule?",
 ];
 
 var _followUpSuggestions = {
@@ -798,10 +907,7 @@ function initQA() {
         chatWelcomeHtml() +
       '</div>' +
       '<div class="chat-input-bar">' +
-        '<button class="chat-review-toggle" id="chat-review-toggle" title="Include AI Review in response">' +
-          '<input type="checkbox" id="chat-review-cb">' +
-          '<span>🤖 AI Review</span>' +
-        '</button>' +
+        '<div class="chat-input-hint">Deterministic answers first · AI review is explicit</div>' +
         '<textarea class="chat-input-field" id="chat-input" rows="1" placeholder="Ask about your reconciliation data…" autocomplete="off"></textarea>' +
         '<button class="chat-send-btn" id="chat-send-btn">Send</button>' +
       '</div>' +
@@ -809,14 +915,6 @@ function initQA() {
 
   var input = document.getElementById("chat-input");
   var btn = document.getElementById("chat-send-btn");
-  var toggle = document.getElementById("chat-review-toggle");
-  var cb = document.getElementById("chat-review-cb");
-
-  toggle.addEventListener("click", function () {
-    _chatReviewMode = !_chatReviewMode;
-    cb.checked = _chatReviewMode;
-    toggle.classList.toggle("active", _chatReviewMode);
-  });
 
   function submit() {
     var q = input.value.trim();
@@ -868,7 +966,7 @@ function chatWelcomeHtml() {
   }).join("");
   return '<div class="chat-welcome">' +
     '<h2>Settlement Intelligence</h2>' +
-    '<p>Ask questions about your reconciliation data. The AI follows deterministic matching rules and explains decisions grounded in real pipeline results.</p>' +
+    '<p>Ask about a transaction, settlement value, or exception filter. Answers use completed reconciliation evidence; AI review is explicit and read-only.</p>' +
     '<div class="chat-suggestions">' + chips + '</div>' +
   '</div>';
 }
@@ -905,7 +1003,6 @@ function removeTypingIndicator() {
 }
 
 async function sendChat(q) {
-  var reviewMode = _chatReviewMode;
   addUserMessage(q);
   addTypingIndicator();
 
@@ -916,8 +1013,9 @@ async function sendChat(q) {
       body: JSON.stringify({question: q}),
     });
     var data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Question could not be answered");
     removeTypingIndicator();
-    addAIResponse(data, reviewMode);
+    addAIResponse(data);
     updateFollowUps(data);
   } catch (err) {
     removeTypingIndicator();
@@ -925,87 +1023,85 @@ async function sendChat(q) {
   }
 }
 
-function addAIResponse(data, reviewMode) {
+function chatCitationsHtml(citations) {
+  if (!Array.isArray(citations) || citations.length === 0) return "";
+  return '<div class="chat-citations"><span>Evidence</span>' +
+    citations.map(function (citation) {
+      var source = citation.source || "source";
+      var rowId = citation.source_row_id || "—";
+      return '<span class="chat-citation">' + esc(source) + " " + esc(rowId) + "</span>";
+    }).join("") + "</div>";
+}
+
+function addAIResponse(data) {
   var msgs = document.getElementById("chat-messages");
   var div = document.createElement("div");
   div.className = "chat-msg ai";
 
-  var intent = (data.intent || "UNKNOWN").replace("INTENT_", "").toLowerCase();
-  var intentClass = intent;
+  var isFinancial = data.source === "DETERMINISTIC_SETTLEMENT" && data.field && data.value !== undefined;
+  var intent = isFinancial ? "settlement value" : (data.intent || "UNKNOWN").replace("INTENT_", "").toLowerCase();
+  var intentClass = isFinancial ? "filter" : intent;
   if (intent === "filter_status" || intent === "filter_rule") intentClass = "filter";
   if (intent === "unsupported") intentClass = "unsupported";
 
-  var answer = data.explanation || "No explanation returned.";
+  var answer = data.explanation || (isFinancial ? "This value comes from the completed deterministic settlement result." : "No explanation returned.");
   var tid = (data.transaction_ids && data.transaction_ids[0]) || null;
+  var firstRetrieved = data.retrieved_data && data.retrieved_data.length > 0 ? data.retrieved_data[0] : null;
+  var actionStatus = firstRetrieved ? firstRetrieved.status : data.status;
+  var actionTier = firstRetrieved ? firstRetrieved.tier : data.tier;
 
-  // Info rows
-  var infoHtml = "";
   var rows = [];
   if (tid) rows.push(["Transaction", tid]);
-  if (data.retrieved_data && data.retrieved_data.length > 0) {
-    var rd = data.retrieved_data[0];
-    if (rd.status) rows.push(["Status", rd.status]);
-    if (rd.tier) rows.push(["Tier", rd.tier]);
-    if (rd.rule) rows.push(["Rule", rd.rule]);
-    if (rd.reason) rows.push(["Reason", rd.reason]);
-    if (rd.confidence != null) rows.push(["Confidence", pct(Number(rd.confidence) * 100) + "%"]);
+  if (isFinancial) {
+    rows.push(["Field", humanizeKey(data.field)]);
+    rows.push(["Value", fmtMoney(data.value)]);
+    rows.push(["Source", "Deterministic settlement"]);
+  } else if (firstRetrieved) {
+    if (firstRetrieved.status) rows.push(["Status", firstRetrieved.status]);
+    if (firstRetrieved.tier) rows.push(["Tier", firstRetrieved.tier]);
+    if (firstRetrieved.rule) rows.push(["Rule", firstRetrieved.rule]);
+    if (firstRetrieved.reason) rows.push(["Reason", firstRetrieved.reason]);
   }
-  if (rows.length > 0) {
-    infoHtml = '<div class="chat-info-rows">' +
-      rows.map(function (r) {
-        return '<div class="chat-info-row"><span class="chat-info-key">' + esc(r[0]) + '</span><span class="chat-info-val">' + esc(String(r[1])) + '</span></div>';
-      }).join("") +
-    '</div>';
-  }
+  var infoHtml = rows.length > 0 ? '<div class="chat-info-rows">' + rows.map(function (row) {
+    return '<div class="chat-info-row"><span class="chat-info-key">' + esc(row[0]) + '</span><span class="chat-info-val">' + esc(String(row[1])) + "</span></div>";
+  }).join("") + "</div>" : "";
 
-  // Confidence bar
   var confHtml = "";
-  if (data.retrieved_data && data.retrieved_data[0] && data.retrieved_data[0].confidence != null) {
-    var c = Math.round(Number(data.retrieved_data[0].confidence) * 100);
-    var cls = c >= 75 ? "high" : (c >= 50 ? "medium" : "low");
-    confHtml = '<div class="chat-confidence">' +
-      '<span class="chat-confidence-label">Confidence</span>' +
-      '<div class="chat-confidence-bar"><div class="chat-confidence-fill ' + cls + '" style="width:' + c + '%"></div></div>' +
-      '<span class="chat-confidence-val">' + c + '%</span>' +
-    '</div>';
+  if (firstRetrieved && firstRetrieved.confidence != null) {
+    var confidence = Math.round(Number(firstRetrieved.confidence) * 100);
+    var confClass = confidence >= 75 ? "high" : (confidence >= 50 ? "medium" : "low");
+    confHtml = '<div class="chat-confidence"><span class="chat-confidence-label">Advisory confidence</span>' +
+      '<div class="chat-confidence-bar"><div class="chat-confidence-fill ' + confClass + '" style="width:' + confidence + '%"></div></div>' +
+      '<span class="chat-confidence-val">' + confidence + "%</span></div>";
   }
 
-  // Meta tags
-  var metaHtml = "";
   var meta = [];
-  if (data.llm_used) meta.push("🤖 LLM used");
-  if (data.llm_unavailable) meta.push("⚠️ LLM unavailable");
-  if (data.found === false) meta.push("❓ Not found");
-  if (data.supported === false) meta.push("🚫 Unsupported");
-  if (meta.length) {
-    metaHtml = '<div class="chat-meta">' +
-      meta.map(function (m) { return '<span>' + m + '</span>'; }).join("") +
-    '</div>';
-  }
+  if (isFinancial) meta.push("Deterministic answer");
+  else if (data.llm_used) meta.push("AI-assisted explanation");
+  else meta.push("Stored evidence answer");
+  if (data.llm_unavailable) meta.push("AI unavailable · deterministic fallback");
+  if (data.found === false) meta.push("Not found");
+  if (data.supported === false) meta.push("Unsupported");
+  var metaHtml = meta.length > 0 ? '<div class="chat-meta">' + meta.map(function (item) { return "<span>" + esc(item) + "</span>"; }).join("") + "</div>" : "";
 
-  // Action buttons — using data attributes instead of inline onclick (IIFE-safe)
-  var actionsHtml = "";
   var actions = [];
   if (tid) {
-    actions.push('<button class="chat-action-btn primary" data-chat-action="view-transaction" data-chat-tid="' + esc(tid) + '">📄 View Transaction</button>');
-    actions.push('<button class="chat-action-btn" data-chat-action="ai-review" data-chat-tid="' + esc(tid) + '">🤖 AI Review</button>');
+    actions.push('<button class="chat-action-btn primary" data-chat-action="view-transaction" data-chat-tid="' + esc(tid) + '">View transaction</button>');
+    actions.push('<button class="chat-action-btn" data-chat-action="ai-review" data-chat-tid="' + esc(tid) + '">Review with AI · read-only</button>');
   }
-  if (data.retrieved_data && data.retrieved_data[0] && data.retrieved_data[0].status === "AI_RETRY_REQUIRED") {
-    if (tid) actions.push('<button class="chat-action-btn" data-chat-action="retry-llm" data-chat-tid="' + esc(tid) + '">↻ Retry Gemini</button>');
+  if (actionStatus === "AI_RETRY_REQUIRED" && actionTier === "TIER_3" && tid) {
+    actions.push('<button class="chat-action-btn" data-chat-action="retry-llm" data-chat-tid="' + esc(tid) + '">Retry adjudication</button>');
   }
-  if (actions.length) {
-    actionsHtml = '<div class="chat-actions">' + actions.join("") + '</div>';
-  }
+  var actionsHtml = actions.length > 0 ? '<div class="chat-actions">' + actions.join("") + "</div>" : "";
+  var valueHtml = isFinancial ? '<div class="deterministic-value"><span>Deterministic value</span><strong>' + fmtMoney(data.value) + "</strong></div>" : "";
 
   div.innerHTML =
     '<div class="chat-avatar">🤖</div>' +
     '<div class="chat-bubble"><div class="chat-card">' +
-      '<div class="chat-card-head">' +
-        '<span class="intent-badge ' + intentClass + '">' + esc(intent.replace(/_/g, " ")) + '</span>' +
-      '</div>' +
-      '<div class="chat-card-body">' + esc(answer) + '</div>' +
-      infoHtml + confHtml + metaHtml + actionsHtml +
-    '</div></div>';
+      '<div class="chat-card-head"><span class="intent-badge ' + intentClass + '">' + esc(intent.replace(/_/g, " ")) + "</span></div>" +
+      '<div class="chat-card-body">' + esc(answer) + "</div>" +
+      valueHtml + infoHtml + confHtml + chatCitationsHtml(data.citations) + metaHtml + actionsHtml +
+    "</div></div>";
 
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
@@ -1126,7 +1222,7 @@ async function chatRetryLLM(tid, button) {
     button.textContent = "✓ Done";
   } catch (err) {
     button.disabled = false;
-    button.textContent = "↻ Retry Gemini";
+    button.textContent = "↻ Retry adjudication";
     alert("Retry failed: " + err.message);
   }
 }

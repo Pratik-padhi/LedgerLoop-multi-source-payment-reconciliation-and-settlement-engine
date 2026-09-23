@@ -343,6 +343,11 @@ def api_exceptions():
             SplitStatus.AMBIGUOUS, SplitStatus.AI_RETRY_REQUIRED,
             SplitStatus.PARTIAL, SplitStatus.UNRESOLVED,
         ):
+            settlement = d.get("settlement") or {}
+            expected_net = d.get("expected_net")
+            if expected_net is None:
+                expected_net = settlement.get("expected_net_amount")
+            gateway_id = (d.get("matched_records") or {}).get("gateway")
             exceptions.append({
                 "transaction_id": tid,
                 "tier": entry["tier"],
@@ -351,8 +356,11 @@ def api_exceptions():
                 "reason": d.get("reason"),
                 "matched_records": d.get("matched_records", {}),
                 "bank_row_ids": d.get("bank_row_ids", []),
+                "gateway_amount": _gw_amount_by_source.get(gateway_id) if gateway_id else None,
+                "expected_net": expected_net,
                 "received": d.get("received"),
                 "outstanding": d.get("outstanding"),
+                "settlement": settlement or None,
                 "evidence": d.get("evidence", {}),
                 "llm_consulted": d.get("llm_consulted", False),
             })

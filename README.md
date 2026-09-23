@@ -21,6 +21,17 @@ Every result is structured for auditability as **Status -> Reason -> Evidence ->
 
 The repository includes a synthetic dataset of 111 logical transactions across 115 gateway rows, 110 bank rows, and 116 ledger rows (excluding CSV headers). It includes normal exact matches, settlement delays, rounding differences, reference formatting, TDS mismatches, refunds, duplicate ledger entries, missing counterparts, orphan records, and Tier 3 cases requiring human review or LLM-assisted adjudication. `ground_truth.csv` is evaluation-only and is never consulted during matching.
 
+## Recruiter demo path
+
+The checked-in Render deployment is already a zero-configuration synthetic demo. A reviewer can explore the product without uploading files or configuring Gemini:
+
+1. Start on **Reconciliation Overview** to see gateway, bank, and ledger scope plus run health.
+2. Open **Exceptions** to select a real discrepancy and inspect its source rows, evidence, and settlement breakdown.
+3. Use **Review with AI · read-only** for an explicit grounded review, or open the existing retry action only when authorized.
+4. Open **Settlement Intelligence** to ask bounded questions such as `What happened to PAY109?` or `What is the variance for PAY109?`.
+
+This is a guided presentation path, not a second demo mode or a second reconciliation dataset. The deterministic engine remains authoritative; AI is never required to load the dashboard or inspect deterministic results.
+
 ## Run locally
 
 Use Python 3.13 or newer, install the dependencies, and start the development server:
@@ -30,12 +41,15 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-Open `http://localhost:5000`. The application runs the pipeline once at startup and serves the UI and read-only JSON APIs:
+Open `http://localhost:5000`. Importing the Flask application does not run reconciliation. The first `/api/*` request lazily builds the in-memory reconciliation snapshot; `/health` remains a lightweight liveness check.
+
+The UI and read-only JSON APIs are:
 
 - `GET /`
 - `GET /health`
 - `GET /api/overview`
 - `GET /api/exceptions`
+- `GET /api/transactions`
 - `GET /api/transaction/<id>`
 - `POST /api/qa` with `{"question": "What happened to PAY109?"}`
 
@@ -81,6 +95,8 @@ Gemini is optional and configured only through environment variables:
 - `GEMINI_MODEL=gemini-2.5-flash-lite` - optional model override. The same model is used by default in local and deployed configuration unless overridden.
 - `GEMINI_MODELS` - optional comma-separated fallback model chain shown in the overview response.
 
+`LEDGERLOOP_ENABLE_AI=1` is required for AI to participate in the reconciliation pipeline. Without it, dashboard loading and deterministic reconciliation remain offline and Gemini is used only by an explicit review/retry action.
+
 ## Dataset profiles
 
 Local runs default to the compact `data/` dataset for fast, deterministic startup.
@@ -99,8 +115,8 @@ Create a Render Blueprint deployment from `render.yaml`:
 - Branch: `master`
 - Build command: `pip install -r requirements.txt`
 - Start command: `gunicorn app:app`
-- Required environment variable: `GEMINI_API_KEY` (set as a Render secret if live Tier 3 Gemini calls are desired)
-- Optional environment variables: `LLM_PROVIDER`, `GEMINI_MODEL`, `GEMINI_MODELS`, and `LEDGERLOOP_DATA_DIR`
+- Required environment variable: `GEMINI_API_KEY` (set as a Render secret if explicit Gemini review/retry actions are desired)
+- Optional environment variables: `LLM_PROVIDER`, `GEMINI_MODEL`, `GEMINI_MODELS`, `LEDGERLOOP_ENABLE_AI`, and `LEDGERLOOP_DATA_DIR`
 
 Render supplies `PORT`; Gunicorn imports the single Flask application as `app:app`. The included CSV data is read from the repository at startup, and no database or background worker is required for this demo deployment.
 

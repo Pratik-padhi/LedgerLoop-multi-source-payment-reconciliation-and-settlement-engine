@@ -179,8 +179,22 @@ class TestExceptionsEndpoint(unittest.TestCase):
         r = self.client.get("/api/exceptions")
         d = r.get_json()
         for exc in d["exceptions"]:
-            for field in ("transaction_id", "tier", "status", "matched_records", "evidence"):
+            for field in (
+                "transaction_id", "tier", "status", "matched_records",
+                "gateway_amount", "expected_net", "settlement", "evidence",
+            ):
                 self.assertIn(field, exc, f"missing {field} in {exc.get('transaction_id')}")
+
+    def test_exception_gateway_amount_uses_existing_index_metadata(self):
+        """Queue amounts are read-only projections of existing gateway data."""
+        exceptions = self.client.get("/api/exceptions").get_json()["exceptions"]
+        for exc in exceptions:
+            gateway_id = (exc.get("matched_records") or {}).get("gateway")
+            if gateway_id:
+                self.assertEqual(
+                    exc["gateway_amount"],
+                    server_module._gw_amount_by_source[gateway_id],
+                )
 
     def test_exceptions_are_non_empty(self):
         """The real dataset always has some exceptions."""
@@ -571,6 +585,16 @@ class TestQAEndpoint(unittest.TestCase):
         self.assertEqual(d["intent"], "FILTER_STATUS")
         # The intent is correctly classified; 0 results is valid after Stage 3
 
+    def test_financial_query_returns_value_and_citations_for_ui(self):
+        """The UI can render the existing deterministic settlement contract."""
+        r = self._ask("What is the variance for PAY109?")
+        d = r.get_json()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(d["source"], "DETERMINISTIC_SETTLEMENT")
+        self.assertTrue(d["found"])
+        self.assertIn("value", d)
+        self.assertGreater(len(d["citations"]), 0)
+
     def test_unsupported_question(self):
         r = self._ask("What is the weather today?")
         d = r.get_json()
@@ -631,6 +655,14 @@ class TestStaticRoutes(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("javascript", r.content_type)
         self.assertGreater(len(r.data), 1000)
+
+    def test_overview_has_context_actions_for_first_use(self):
+        """The first screen exposes the product context and investigation paths."""
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Reconciliation Overview", html)
+        self.assertIn("data-jump-panel=\"exceptions\"", html)
+        self.assertIn("data-jump-panel=\"transactions\"", html)
+        self.assertIn("overview-exception-cta-count", html)
 
 
 class TestPipelineIsolation(unittest.TestCase):

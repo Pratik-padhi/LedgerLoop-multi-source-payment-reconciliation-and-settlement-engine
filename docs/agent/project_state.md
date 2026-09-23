@@ -1,14 +1,17 @@
 # LedgerLoop Agent State
 
 ## Current Phase
-Phase 0 — Baseline, Recovery and P0 Triage (Completed)
+Product/UX Polish — P2.2 Final visual consistency pass (Completed)
 
 ## Last Verified Commit
-c3360fa ("Add Q&A report HTML and configuration tests") with uncommitted working-tree additions.
+e6b7165 ("Fix performance bottleneck in reconciliation process by optimizing GeminiFallbackClient usage") with current Product/UX Polish working-tree changes.
 
 ## Test Baseline
 - Total tests: 405 passed, 30 subtests passed (0 failed, 0 errors in 1.38s).
 - Total tests: 406 passed, 30 subtests passed (0 failed, 0 errors in 1.55s).
+- Total tests: 407 passed, 30 subtests passed (0 failed, 0 errors in 1.39s) after P0.1.
+- Total tests: 408 passed, 30 subtests passed (0 failed, 0 errors in 1.36s) after the completed Product/UX Polish phases.
+- Total tests: 409 passed, 30 subtests passed (0 failed, 0 errors in 1.35s) after the final settlement-query UI contract test.
 - Ran with: `python -m pytest -q --basetemp=.pytest_tmp`.
 
 ## Completed
@@ -43,9 +46,50 @@ c3360fa ("Add Q&A report HTML and configuration tests") with uncommitted working
     - Use `settings.ai_enabled` (not `settings.gemini_enabled`) for `stage3_llm` in `run_stage3`
   - **Result**: Reconciliation on `data_large` with Render config now completes in **0.36s with 0 LLM calls** (down from 12s+ with 50+ failed calls).
   - **All 406 tests pass**, `git diff --check` clean.
+- **P0.1 Product/UX polish — Overview hierarchy and truthful framing (2026-09-24)**:
+  - Reframed the Overview around four primary run-health metrics: total transactions, gateway gross value, reconciled gateway value, and reconciliation rate.
+  - Moved exception and Stage 3 settlement diagnostics into a secondary section; clarified that the variance value is split-settlement scope rather than a fabricated cash-at-risk metric.
+  - Added dynamic gateway/bank/ledger context, deterministic-first wording, Overview CTAs for Exceptions and Transactions, and a recoverable API error state.
+  - Renamed pipeline and LLM sections to make deterministic authority and contextual AI explicit.
+  - Added a static UI contract test in [tests/test_ui_server.py](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/tests/test_ui_server.py).
+  - Verification: `407 passed, 30 subtests passed`; `node --check ui/app.js`; `git diff --check` clean.
+  - No backend API, reconciliation, AI, dependency, or Render changes were made.
+- **P0.2 Product/UX polish — Mobile navigation and resilient UI states (2026-09-24)**:
+  - Reworked the responsive navigation into contained four-column/tablet and two-column/mobile grids with short labels for dense viewports.
+  - Kept the run status and theme toggle available in the compact sidebar footer.
+  - Added responsive containment for primary KPI grids, pipeline stages, exception lists, transaction tables, evidence rows, and the Q&A composer.
+  - Added retryable loading/error states for Overview, Exceptions, and Transactions using the existing API routes.
+  - No frontend timeout, backend route, reconciliation, AI, dependency, or Render changes were made.
+  - Verification: `node --check ui/app.js`; `tests/test_ui_server.py`: 69 passed; full suite: `407 passed, 30 subtests passed`; `git diff --check` clean.
+- **P1.1 Product/UX polish — Exception investigation workspace (2026-09-24)**:
+  - Extended `/api/exceptions` with read-only `gateway_amount`, `expected_net`, and `settlement` metadata sourced from the existing in-memory index; matching and accounting logic were not changed.
+  - Added amount, reason, and AI-history context to the exception queue.
+  - Replaced raw evidence JSON with safe structured evidence chips, nested values, source-row chips, and humanized field labels.
+  - Added explicit next-best-action guidance and clarified read-only AI review versus retry adjudication.
+  - Added exception response-field and metadata consistency tests in [tests/test_ui_server.py](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/tests/test_ui_server.py).
+  - Verification: `node --check ui/app.js`; `tests/test_ui_server.py`: 70 passed; full suite: `408 passed, 30 subtests passed`; `git diff --check` clean.
+- **P1.2 Product/UX polish — Settlement Intelligence and grounded AI UX (2026-09-24)**:
+  - Removed the inert Q&A AI Review checkbox instead of presenting a control that did not affect `/api/qa`.
+  - Clarified the panel as grounded, read-only analysis and added a visible deterministic-first input hint.
+  - Rendered the existing deterministic financial-query contract (`field`, `value`, `status`, `citations`) instead of showing “No explanation returned.”
+  - Added visible source-row citations, answer provenance labels, and read-only AI review wording; kept retry adjudication separate and tier-aware.
+  - No changes were made to Q&A intent classification, financial calculations, Gemini clients, or reconciliation logic.
+  - Verification: `node --check ui/app.js`; focused Q&A/API tests: 73 passed; full suite: `408 passed, 30 subtests passed`; `git diff --check` clean.
+- **P2.1 Product/UX polish — Demo path and documentation (2026-09-24)**:
+  - Added a non-stateful three-step recruiter demo path to the Overview using existing panels and existing data.
+  - Explicitly labeled the checked-in profile as a synthetic demo and stated that no upload or Gemini key is required.
+  - Updated [README.md](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/README.md) to document lazy initialization, current API routes, deterministic-first behavior, the demo path, and explicit AI opt-in.
+  - No separate demo mode, dataset, backend route, upload flow, or Render configuration was added.
+  - Verification: `node --check ui/app.js`; `tests/test_ui_server.py`: 70 passed; full suite: `408 passed, 30 subtests passed`; `git diff --check` clean.
+- **P2.2 Product/UX polish — Final visual consistency pass (2026-09-24)**:
+  - Removed obsolete Q&A toggle styling after removing the inert control.
+  - Standardized mobile error states, detail action wrapping, compact navigation, demo steps, evidence chips, settlement values, and citation styling using the existing design tokens.
+  - Added active navigation `aria-current` state and retained visible keyboard focus/reduced-motion behavior.
+  - No new visual identity, dependency, chart library, backend route, reconciliation logic, AI implementation, or Render setting was introduced.
+  - Verification: `node --check ui/app.js`; `tests/test_ui_server.py`: 71 passed; full suite: `409 passed, 30 subtests passed`; `git diff --check` clean.
 
 ## In Progress
-None.
+None. Product/UX polish implementation is complete; awaiting deployment/manual visual verification.
 
 ## Blocked
 None.
@@ -58,7 +102,7 @@ None.
 
 ## Architecture Notes
 - Reconciliation pipeline execution is orchestrated via [core/service.py](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/core/service.py) (`run_reconciliation`), wrapping Tier 1 exact, Tier 2 fuzzy, Tier 3 LLM-assisted, and Stage 3 split matching.
-- Controller server in [app.py](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/app.py) holds in-memory snapshot state, exposes read-only endpoints (`/api/overview`, `/api/exceptions`, `/api/transactions`, `/api/transaction/<id>`, `/api/qa`), and mutation-audited retry endpoints (`/api/transaction/<id>/retry-llm`, `/api/transaction/<id>/retry-stage3`).
+- Controller server in [app.py](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/app.py) holds in-memory snapshot state, exposes read-only endpoints (`/api/overview`, `/api/exceptions`, `/api/transactions`, `/api/transaction/<id>`, `/api/qa`, and `/api/transaction/<id>/ai-review`), and mutation-audited retry endpoints (`/api/transaction/<id>/retry-llm`, `/api/transaction/<id>/retry-stage3`).
 - Controller server in [app.py](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/app.py) defines routes and Flask application at import without side-effects, lazily executing reconciliation when API requests arrive or when runtime attributes are explicitly accessed.
 - Global variables in [app.py](file:///d:/Projects/Deployed/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine/app.py) (`_r1`, `_r2`, `_r3`, `_r4`, `_index`, `_stage3_consumed`, `_qa_agent`) share reference identity with `_RUNTIME_STATE` for in-process modifications during test and runtime flows.
 
@@ -71,5 +115,5 @@ None.
 - Actions require `X-LedgerLoop-Actor` header in production and optional constant-time token validation (`LEDGERLOOP_ACTION_TOKEN`).
 
 ## Next Recommended Phase
-Phase 1 — Ingestion & Upload Pipeline (or next planned milestone as directed).
+Manual Render/browser verification of the completed Product/UX polish phase; then checkpoint or deploy.
 

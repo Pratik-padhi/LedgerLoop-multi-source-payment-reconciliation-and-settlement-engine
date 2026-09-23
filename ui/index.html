@@ -29,22 +29,26 @@
 
     <div class="nav-section-label">Workspace</div>
     <nav class="nav" id="nav">
-      <button class="nav-item active" data-panel="overview">
+      <button class="nav-item active" data-panel="overview" aria-current="page">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        Overview
+        <span class="nav-label-full">Overview</span>
+        <span class="nav-label-short">Overview</span>
       </button>
       <button class="nav-item" data-panel="exceptions">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        Exceptions
+        <span class="nav-label-full">Exceptions</span>
+        <span class="nav-label-short">Exceptions</span>
         <span class="badge" id="exc-badge" style="display:none">0</span>
       </button>
       <button class="nav-item" data-panel="transactions">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        Transactions
+        <span class="nav-label-full">Transactions</span>
+        <span class="nav-label-short">Txns</span>
       </button>
       <button class="nav-item" data-panel="qa">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        Settlement Intelligence
+        <span class="nav-label-full">Settlement Intelligence</span>
+        <span class="nav-label-short">Intelligence</span>
       </button>
     </nav>
 
@@ -62,11 +66,21 @@
     <!-- Overview Panel -->
     <section class="panel active" id="panel-overview">
       <div class="panel-head">
-        <h1>Reconciliation Overview</h1>
-        <span class="panel-subtitle" id="overview-subtitle"></span>
+        <div>
+          <h1>Reconciliation Overview</h1>
+          <span class="panel-subtitle" id="overview-subtitle"></span>
+        </div>
+        <div class="panel-head-actions">
+          <button class="btn btn-secondary btn-sm" data-jump-panel="exceptions">
+            Review exceptions <span id="overview-exception-cta-count"></span>
+          </button>
+          <button class="btn btn-primary btn-sm" data-jump-panel="transactions">
+            Explore transactions
+          </button>
+        </div>
       </div>
       <div id="overview-content">
-        <div class="loading">Loading…</div>
+        <div class="loading" role="status" aria-live="polite">Preparing reconciliation data…</div>
       </div>
     </section>
 
@@ -94,7 +108,7 @@
     <section class="panel" id="panel-qa">
       <div class="panel-head">
         <h1>Settlement Intelligence</h1>
-        <span class="panel-subtitle">AI-assisted reconciliation analysis</span>
+        <span class="panel-subtitle">Grounded, read-only reconciliation analysis</span>
       </div>
       <div id="qa-content">
         <div class="empty-msg">Select this tab to load the question interface.</div>
