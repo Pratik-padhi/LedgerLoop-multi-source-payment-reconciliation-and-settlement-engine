@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f0f1f1">
+  <title>Console — LedgerLoop</title>
+  <meta name="description" content="The live LedgerLoop console: run snapshot, pipeline trace, exception investigation, transaction index, and grounded settlement Q&amp;A over a read-only reconciliation snapshot.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'><rect width='26' height='26' rx='3' fill='%230f1113'/><path d='M7 5v16h8' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='square'/><path d='M12 5v10h8' fill='none' stroke='%23d4795f' stroke-width='1.8' stroke-linecap='square'/></svg>">
+  <link rel="preload" href="fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/azeret-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body data-surface="console">
+  <a class="skip-link" href="#console-main">Skip to content</a>
+
+  <header class="masthead">
+    <div class="shell masthead__bar">
+      <a class="brand" href="/" aria-label="LedgerLoop, back to the project page">
+        <svg class="brand__mark" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="square" aria-hidden="true">
+          <path d="M4 3v20h11"/>
+          <path d="M9.5 3v13h10.5"/>
+          <path d="M16.5 12.5 20 16l-3.5 3.5"/>
+        </svg>
+        <span>
+          <span class="brand__name">LedgerLoop</span>
+          <span class="brand__sub">Live console</span>
+        </span>
+      </a>
+
+      <div class="masthead__tools" style="margin-inline-start:auto">
+        <div class="run-status state-neutral" id="header-run-status" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="header-run-status-text">Run pending</span>
+        </div>
+        <a class="icon-btn" href="/">Project</a>
+        <a class="icon-btn icon-btn--optional" href="https://github.com/Pratik-padhi/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine" target="_blank" rel="noreferrer" aria-label="View source on GitHub">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 2.5h6.5a1 1 0 0 1 1 1V9M11.5 6.5l-6 7M5 2.5v3a1 1 0 0 0 1 1h3"/><path d="M2 9.5v4h4"/></svg>
+          Source
+        </a>
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch to dark theme">
+          <svg class="theme-icon theme-icon-sun" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1v1.6M8 13.4V15M1 8h1.6M13.4 8H15M3 3l1.1 1.1M11.9 11.9 13 13M3 13l1.1-1.1M11.9 4.1 13 3"/></svg>
+          <svg class="theme-icon theme-icon-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M13.5 9.8A5.8 5.8 0 0 1 6.2 2.5a5.9 5.9 0 1 0 7.3 7.3Z"/></svg>
+          <span id="theme-label">Dark</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="console">
+    <nav class="rail" id="nav" aria-label="Console sections">
+      <div class="rail__group">
+        <p class="label rail__title">Run</p>
+        <button class="rail__item" type="button" data-panel="overview" aria-current="page">
+          <span class="rail__n">01</span>
+          <span><span class="rail__name">Overview</span><span class="rail__sub">Current run</span></span>
+        </button>
+        <button class="rail__item" type="button" data-panel="runs">
+          <span class="rail__n">02</span>
+          <span><span class="rail__name">Pipeline</span><span class="rail__sub">Run trace</span></span>
+        </button>
+      </div>
+      <div class="rail__group">
+        <p class="label rail__title">Investigate</p>
+        <button class="rail__item" type="button" data-panel="exceptions">
+          <span class="rail__n">03</span>
+          <span><span class="rail__name">Exceptions</span><span class="rail__sub">Queue</span></span>
+          <span class="rail__count" id="exc-badge" hidden>0</span>
+        </button>
+        <button class="rail__item" type="button" data-panel="transactions">
+          <span class="rail__n">04</span>
+          <span><span class="rail__name">Transactions</span><span class="rail__sub">Source index</span></span>
+        </button>
+        <button class="rail__item" type="button" data-panel="qa">
+          <span class="rail__n">05</span>
+          <span><span class="rail__name">Intelligence</span><span class="rail__sub">Grounded Q&amp;A</span></span>
+        </button>
+      </div>
+      <div class="rail__group">
+        <p class="label rail__title">Keys</p>
+        <p class="rail__note">
+          <kbd>↑</kbd> <kbd>↓</kbd> move · <kbd>Enter</kbd> open · <kbd>Esc</kbd> clear ·
+          <kbd>/</kbd> search
+        </p>
+      </div>
+    </nav>
+
+    <main class="console__main" id="console-main">
+      <form class="command" id="console-ask" style="margin-bottom:1.1rem" autocomplete="off">
+        <div class="command__bar">
+          <label class="command__prompt" for="console-ask-input">ask&nbsp;›</label>
+          <input class="command__input" id="console-ask-input" name="question" type="text"
+                 placeholder="Ask a bounded question…">
+          <button class="btn btn--sm btn--primary" type="submit">Run</button>
+        </div>
+      </form>
+
+      <!-- Overview -->
+      <section class="panel is-active" id="panel-overview" aria-labelledby="overview-heading" tabindex="-1">
+        <div class="panel__head">
+          <div>
+            <h1 id="overview-heading">Overview</h1>
+            <p id="overview-subtitle">Current reconciliation run, financial position, and resolution path.</p>
+          </div>
+          <div class="panel__actions">
+            <button class="btn btn--sm btn--quiet" type="button" data-jump-panel="transactions">Source index</button>
+            <button class="btn btn--sm btn--primary" type="button" data-jump-panel="exceptions">Review exceptions <span id="overview-exception-cta-count"></span></button>
+          </div>
+        </div>
+        <div class="stack" id="overview-content">
+          <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        </div>
+      </section>
+
+      <!-- Pipeline -->
+      <section class="panel" id="panel-runs" aria-labelledby="runs-heading" tabindex="-1" hidden>
+        <div class="panel__head">
+          <div>
+            <h1 id="runs-heading">Reconciliation Runs</h1>
+            <p id="runs-subtitle">Stage handoffs, source coverage, and the boundaries the engine holds.</p>
+          </div>
+          <div class="panel__actions">
+            <button class="btn btn--sm btn--quiet" type="button" data-jump-panel="transactions">Open source index</button>
+            <button class="btn btn--sm btn--primary" type="button" data-jump-panel="exceptions">Review exceptions</button>
+          </div>
+        </div>
+        <div class="stack" id="runs-content">
+          <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        </div>
+      </section>
+
+      <!-- Exceptions -->
+      <section class="panel" id="panel-exceptions" aria-labelledby="exceptions-heading" tabindex="-1" hidden>
+        <div class="panel__head">
+          <div>
+            <h1 id="exceptions-heading">Exceptions</h1>
+            <p>Every transaction the pipeline declined to resolve automatically, with the reason and the rows to read.</p>
+          </div>
+        </div>
+        <div id="exceptions-content">
+          <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        </div>
+      </section>
+
+      <!-- Transactions -->
+      <section class="panel" id="panel-transactions" aria-labelledby="transactions-heading" tabindex="-1" hidden>
+        <div class="panel__head">
+          <div>
+            <h1 id="transactions-heading">Transactions</h1>
+            <p>Every logical transaction in the run, gateway-anchored, searchable by ID, row, rule, or status.</p>
+          </div>
+        </div>
+        <div id="transactions-content">
+          <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        </div>
+      </section>
+
+      <!-- Settlement Intelligence -->
+      <section class="panel" id="panel-qa" aria-labelledby="qa-heading" tabindex="-1" hidden>
+        <div class="panel__head">
+          <div>
+            <h1 id="qa-heading">Settlement Intelligence</h1>
+            <p>The deterministic settlement position first, then bounded questions answered from stored results with citations.</p>
+          </div>
+        </div>
+        <div id="qa-content">
+          <div class="skeleton" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
