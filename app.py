@@ -22,7 +22,8 @@ This module DOES NOT:
 
 Endpoints
 ---------
-  GET  /                       → serves ui/index.html
+  GET  /                       → serves ui/index.html (the project page)
+  GET  /app                    → serves ui/console.html (the operator console)
   GET  /api/overview           → summary counts + per-tier stats
   GET  /api/exceptions         → all HUMAN_REVIEW + UNRESOLVED results (full detail)
   GET  /api/transaction/<id>   → single transaction detail (any tier)
@@ -254,9 +255,15 @@ def index():
     return send_from_directory(_UI_DIR, "index.html")
 
 
+@app.route("/app")
+def console():
+    """The operator console: the same world, in operating mode."""
+    return send_from_directory(_UI_DIR, "console.html")
+
+
 @app.route("/<path:filename>")
 def ui_asset(filename):
-    """Serve static assets (CSS, JS, etc.) from the ui/ directory."""
+    """Serve static assets (CSS, JS, fonts) from the ui/ directory."""
     return send_from_directory(_UI_DIR, filename)
 
 

@@ -656,18 +656,18 @@ class TestStaticRoutes(unittest.TestCase):
         self.assertIn("javascript", r.content_type)
         self.assertGreater(len(r.data), 1000)
 
-    def test_overview_has_context_actions_for_first_use(self):
-        """The first screen exposes the case-study context and investigation paths."""
+    def test_pitch_has_context_actions_for_first_use(self):
+        """The project page states the thesis and exposes the live proof path."""
         html = self.client.get("/").get_data(as_text=True)
-        self.assertIn("Reconciliation that shows its work", html)
-        self.assertIn("What this project demonstrates", html)
-        self.assertIn("data-jump-panel=\"exceptions\"", html)
-        self.assertIn("data-jump-panel=\"transactions\"", html)
-        self.assertIn("overview-exception-cta-count", html)
+        self.assertIn("Every payment reconciled to a source row", html)
+        self.assertIn("Open the live console", html)
+        self.assertIn('href="/app"', html)
+        self.assertIn('id="evidence-trace"', html)
+        self.assertIn('id="source-scope"', html)
 
     def test_navigation_covers_operations_surfaces(self):
-        """The shell navigation exposes every primary operations surface."""
-        html = self.client.get("/").get_data(as_text=True)
+        """The console navigation exposes every primary operations surface."""
+        html = self.client.get("/app").get_data(as_text=True)
         for panel in ("overview", "runs", "exceptions", "transactions", "qa"):
             self.assertIn('data-panel="%s"' % panel, html)
             self.assertIn('id="panel-%s"' % panel, html)
@@ -678,9 +678,8 @@ class TestStaticRoutes(unittest.TestCase):
     def test_application_shell_header_contract(self):
         """The project masthead owns navigation, run status, source, and theme controls."""
         html = self.client.get("/").get_data(as_text=True)
-        self.assertIn('class="app-header"', html)
-        self.assertIn('class="masthead"', html)
-        self.assertIn('class="navigation-row"', html)
+        self.assertIn('class="masthead app-header"', html)
+        self.assertIn('class="masthead__nav navigation-row"', html)
         self.assertIn('id="nav"', html)
         self.assertIn('id="header-run-status"', html)
         self.assertIn('id="header-run-status-text"', html)
@@ -694,13 +693,14 @@ class TestStaticRoutes(unittest.TestCase):
         self.assertIn("renderRuns", js)
         self.assertIn("loadRuns", js)
         self.assertIn("updateHeader", js)
+        self.assertIn("setSourceScope", js)
         self.assertNotIn('getElementById("theme-icon")', js)
         self.assertNotIn('getElementById("pipeline-status")', js)
 
     def test_settlement_prompts_are_profile_safe_and_supported(self):
         """Frontend prompts adapt to the active Stage 3 case instead of hard-coding PAY109."""
         js = self.client.get("/app.js").get_data(as_text=True)
-        self.assertIn('var promptTransaction = rows.length', js)
+        self.assertIn('var promptTransaction = focus ? focus.transaction_id : null', js)
         self.assertIn('"What happened to " + promptTransaction + "?"', js)
         self.assertIn('"What is the variance for " + promptTransaction + "?"', js)
         self.assertNotIn("Explain the current settlement variance", js)
@@ -713,7 +713,7 @@ class TestStaticRoutes(unittest.TestCase):
         self.assertIn("color-scheme: light", css)
         self.assertIn("color-scheme: dark", css)
         self.assertIn(".app-header", css)
-        self.assertIn(".panel-title", css)
+        self.assertIn(".panel__head", css)
         self.assertNotIn("backdrop-filter", css)
         self.assertNotIn("linear-gradient", css)
 

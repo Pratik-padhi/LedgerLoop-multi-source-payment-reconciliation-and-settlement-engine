@@ -1,7 +1,7 @@
 # LedgerLoop Agent State
 
 ## Current Phase
-Frontend Redesign — Phase 3 evidence-led visual system (Completed in working tree)
+Frontend Redesign — Phase 3 evidence-led visual system + pitch/console split (Completed in working tree)
 
 ## Last Verified Commit
 b261593 ("checkpoint before website redesign") with uncommitted Phase 1–3 frontend-redesign working-tree changes.
@@ -13,7 +13,7 @@ b261593 ("checkpoint before website redesign") with uncommitted Phase 1–3 fron
 - Total tests: 408 passed, 30 subtests passed (0 failed, 0 errors in 1.36s) after the completed Product/UX Polish phases.
 - Total tests: 409 passed, 30 subtests passed (0 failed, 0 errors in 1.35s) after the final settlement-query UI contract test.
 - Total tests: 413 passed, 30 subtests passed (0 failed, 0 errors in 1.52s) after the Phase 2 structural frontend redesign.
-- Total tests: 414 passed, 30 subtests passed (0 failed, 0 errors in 1.52s) after the Phase 3 evidence-led visual redesign.
+- Total tests: 414 passed, 30 subtests passed (0 failed, 0 errors in 1.52s) after the Phase 3 evidence-led visual redesign and pitch/console split.
 - Ran with: `python -m pytest -q --basetemp=.pytest_tmp`.
 
 ## Completed
@@ -118,13 +118,15 @@ b261593 ("checkpoint before website redesign") with uncommitted Phase 1–3 fron
   - Made Settlement Intelligence prompts profile-safe and grammar-safe by deriving supported transaction questions from the active Stage 3 dataset. Removed aggregate prompts and hard-coded `PAY109` assumptions; clarified gateway value as signed scope.
   - Updated the root README recruiter path and static UI contracts for the new shell. Removed unused legacy render helpers from `ui/app.js`.
   - Verification: focused UI/API tests `76 passed`; full suite `414 passed, 30 subtests passed in 1.52s`; `node --check ui/app.js`; HTML parse and CSS brace checks; `git diff --check` clean apart from line-ending notices.
-  - Headless Edge + Chrome DevTools verification covered 1440px and true 390px mobile emulation, light/dark themes, all five panels, direct hash loads, zero page-level horizontal overflow, 13 exception rows, 115 transaction rows, selected detail views, search filtering, theme state, and a real cited Q&A submission. Runtime, console, and network error lists were empty.
+  - Added `/app` as the operator console while keeping `/` as the recruiter/project page; the shared `app.js` dispatches by `data-surface` and keeps the existing API contracts. Console navigation and live evidence are now independently addressable.
+  - Corrected profile-sensitive UI behavior: the pitch source count is populated from `/api/overview`, the evidence trace prefers a real multi-credit Stage 3 result, and Settlement Intelligence uses the selected live Stage 3 case for contextual prompts.
+  - Verification: `node --check ui/app.js`; focused UI/API tests `76 passed`; full suite `414 passed, 30 subtests passed in 1.52s`; dataset validator passed; `git diff --check` clean apart from line-ending notices.
 
 ## In Progress
-None. Phase 3 frontend redesign, responsive QA, and browser-level interaction verification are complete in the working tree.
+None. Phase 3 frontend redesign, pitch/console split, responsive QA, and browser-level interaction verification are complete in the working tree.
 
 ## Blocked
-None. The connected desktop browser remained unavailable, so verification used headless Edge with Chrome DevTools emulation and screenshots instead.
+None. The connected desktop browser remained unavailable during the latest session; the existing verification record for Phase 3 used headless Edge with Chrome DevTools emulation and screenshots.
 
 ## Deferred
 - Phase 1: Upload pipeline and custom CSV ingestion.

@@ -23,12 +23,25 @@ The repository includes a synthetic dataset of 111 logical transactions across 1
 
 ## Recruiter demo path
 
-The checked-in Render deployment is already a zero-configuration synthetic demo. A reviewer can explore the product without uploading files or configuring Gemini:
+The checked-in Render deployment is already a zero-configuration synthetic demo. A reviewer can explore the product without uploading files or configuring Gemini.
 
-1. Start on **Overview** to understand the project stance, live run scope, financial position, and deterministic resolution path.
+The site is two surfaces sharing one design system: the project page at `/` states what the engine is and proves it with the live run, and the console at `/app` is the operator interface.
+
+On the project page:
+
+1. The first viewport is the run itself: reconciliation rate, source-row counts, gateway and reconciled value, and the exception count. Any figure can be pressed to print its own derivation.
+2. The command line under the readout asks the run a bounded question and answers from stored results with citations.
+3. **Mechanism** shows the four passes with this run's evaluated, resolved, and forwarded counts, beside the boundaries the engine holds.
+4. **Evidence** follows one live Stage 3 split settlement to its gateway, bank, and ledger rows and prints the settlement identity term by term, including the residue it reports rather than absorbs.
+5. **Guardrails** explains what the model may and may not decide, with this run's provider-call, validated, and rejected counts.
+6. **Stack** lists the real stack, the run commands, and the deployment.
+
+In the console at `/app`:
+
+1. Open **Overview** for the current run, financial position, and resolution path.
 2. Open **Pipeline** to inspect source normalization, tier handoffs, one-to-one controls, and resolution authority.
-3. Open **Exceptions** to start with the highest-priority discrepancy, then inspect its reason, source rows, settlement arithmetic, and next action.
-4. Open **Transactions** to search the gateway-anchored index and inspect an active Stage 3 settlement case selected from the current dataset.
+3. Open **Exceptions** to start with the highest-priority discrepancy, then inspect its reason, source rows, settlement arithmetic, and next action. Arrow keys move the selection, Enter opens, `/` focuses search.
+4. Open **Transactions** to search the gateway-anchored index. A Stage 3 settlement case is selected from the current dataset, and the project page's evidence case links straight to it with `/app?txn=<id>`.
 5. Open **Settlement Intelligence** to review expected net, actual bank value, variance, citations, and bounded transaction-specific questions.
 
 The Settlement Intelligence prompts adapt to the active dataset instead of assuming a fixed transaction ID. In the compact local profile, `PAY109` is a deterministic split-settlement example; the expanded Render profile uses later Stage 3 cases. The UI selects a real Stage 3 result from whichever profile is running.
@@ -49,12 +62,15 @@ Open `http://localhost:5000`. Importing the Flask application does not run recon
 The UI and read-only JSON APIs are:
 
 - `GET /`
+- `GET /app` (the operator console)
 - `GET /health`
 - `GET /api/overview`
 - `GET /api/exceptions`
 - `GET /api/transactions`
 - `GET /api/transaction/<id>`
 - `POST /api/qa` with `{"question": "What happened to PAY109?"}`
+
+The frontend is hand-authored HTML, CSS, and vanilla JavaScript served from `ui/`, with no build step and self-hosted variable fonts in `ui/fonts/`. The visual system is recorded in [DESIGN.md](DESIGN.md).
 
 ## Tests
 
