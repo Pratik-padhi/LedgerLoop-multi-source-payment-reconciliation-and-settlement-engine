@@ -19,9 +19,21 @@ GEMINI_API_KEY
 .venv/
 venv/
 
-# Local AI coding instructions
+# AI agent tooling — local only, never part of the project.
+# Holds agent skills, agent worktrees and design-review output; the app never
+# reads any of it. (Note: .github/ is deliberately NOT ignored — CI is tracked.)
+.claude/
+.opencode/
+.cursor/
+.codex/
+.impeccable/
+AGENTS.md
 CLAUDE.md
 claude.md
+
+# Personal reference docs — written for me, not for the repo
+DESIGN.md
+PRODUCT.md
 
 # Local coding-session exports
 api error session.md
@@ -34,17 +46,22 @@ outputs/
 data/normalized/
 instance/
 
-# IDE / editor
+# Editor / scratch
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
-Thumbs.db
+*.tmp
+*.bak
+*.orig
+*.rej
+~$*
+*.log
+out/
 
 # OS
+.DS_Store
+Thumbs.db
 desktop.ini
-.opencode/
-.claude/
-.github/
+.pytest.ini
