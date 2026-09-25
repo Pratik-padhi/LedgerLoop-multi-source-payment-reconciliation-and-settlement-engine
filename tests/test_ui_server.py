@@ -657,12 +657,65 @@ class TestStaticRoutes(unittest.TestCase):
         self.assertGreater(len(r.data), 1000)
 
     def test_overview_has_context_actions_for_first_use(self):
-        """The first screen exposes the product context and investigation paths."""
+        """The first screen exposes the case-study context and investigation paths."""
         html = self.client.get("/").get_data(as_text=True)
-        self.assertIn("Reconciliation Overview", html)
+        self.assertIn("Reconciliation that shows its work", html)
+        self.assertIn("What this project demonstrates", html)
         self.assertIn("data-jump-panel=\"exceptions\"", html)
         self.assertIn("data-jump-panel=\"transactions\"", html)
         self.assertIn("overview-exception-cta-count", html)
+
+    def test_navigation_covers_operations_surfaces(self):
+        """The shell navigation exposes every primary operations surface."""
+        html = self.client.get("/").get_data(as_text=True)
+        for panel in ("overview", "runs", "exceptions", "transactions", "qa"):
+            self.assertIn('data-panel="%s"' % panel, html)
+            self.assertIn('id="panel-%s"' % panel, html)
+        for label in ("Reconciliation Runs", "Exceptions", "Transactions",
+                      "Settlement Intelligence"):
+            self.assertIn(label, html)
+
+    def test_application_shell_header_contract(self):
+        """The project masthead owns navigation, run status, source, and theme controls."""
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn('class="app-header"', html)
+        self.assertIn('class="masthead"', html)
+        self.assertIn('class="navigation-row"', html)
+        self.assertIn('id="nav"', html)
+        self.assertIn('id="header-run-status"', html)
+        self.assertIn('id="header-run-status-text"', html)
+        self.assertIn('id="theme-toggle"', html)
+        self.assertIn("View source on GitHub", html)
+        self.assertNotIn('id="pipeline-status"', html)
+
+    def test_app_js_shell_targets_are_consistent(self):
+        """app.js must not dereference shell elements the markup no longer renders."""
+        js = self.client.get("/app.js").get_data(as_text=True)
+        self.assertIn("renderRuns", js)
+        self.assertIn("loadRuns", js)
+        self.assertIn("updateHeader", js)
+        self.assertNotIn('getElementById("theme-icon")', js)
+        self.assertNotIn('getElementById("pipeline-status")', js)
+
+    def test_settlement_prompts_are_profile_safe_and_supported(self):
+        """Frontend prompts adapt to the active Stage 3 case instead of hard-coding PAY109."""
+        js = self.client.get("/app.js").get_data(as_text=True)
+        self.assertIn('var promptTransaction = rows.length', js)
+        self.assertIn('"What happened to " + promptTransaction + "?"', js)
+        self.assertIn('"What is the variance for " + promptTransaction + "?"', js)
+        self.assertNotIn("Explain the current settlement variance", js)
+        self.assertNotIn("What happened to PAY109?", js)
+
+    def test_styles_define_dual_theme_without_glassmorphism(self):
+        """Both themes are tokenized and surfaces stay opaque (no AI-slop styling)."""
+        css = self.client.get("/styles.css").get_data(as_text=True)
+        self.assertIn(":root[data-theme=\"dark\"]", css)
+        self.assertIn("color-scheme: light", css)
+        self.assertIn("color-scheme: dark", css)
+        self.assertIn(".app-header", css)
+        self.assertIn(".panel-title", css)
+        self.assertNotIn("backdrop-filter", css)
+        self.assertNotIn("linear-gradient", css)
 
 
 class TestPipelineIsolation(unittest.TestCase):

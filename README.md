@@ -25,10 +25,13 @@ The repository includes a synthetic dataset of 111 logical transactions across 1
 
 The checked-in Render deployment is already a zero-configuration synthetic demo. A reviewer can explore the product without uploading files or configuring Gemini:
 
-1. Start on **Reconciliation Overview** to see gateway, bank, and ledger scope plus run health.
-2. Open **Exceptions** to select a real discrepancy and inspect its source rows, evidence, and settlement breakdown.
-3. Use **Review with AI · read-only** for an explicit grounded review, or open the existing retry action only when authorized.
-4. Open **Settlement Intelligence** to ask bounded questions such as `What happened to PAY109?` or `What is the variance for PAY109?`.
+1. Start on **Overview** to understand the project stance, live run scope, financial position, and deterministic resolution path.
+2. Open **Pipeline** to inspect source normalization, tier handoffs, one-to-one controls, and resolution authority.
+3. Open **Exceptions** to start with the highest-priority discrepancy, then inspect its reason, source rows, settlement arithmetic, and next action.
+4. Open **Transactions** to search the gateway-anchored index and inspect an active Stage 3 settlement case selected from the current dataset.
+5. Open **Settlement Intelligence** to review expected net, actual bank value, variance, citations, and bounded transaction-specific questions.
+
+The Settlement Intelligence prompts adapt to the active dataset instead of assuming a fixed transaction ID. In the compact local profile, `PAY109` is a deterministic split-settlement example; the expanded Render profile uses later Stage 3 cases. The UI selects a real Stage 3 result from whichever profile is running.
 
 This is a guided presentation path, not a second demo mode or a second reconciliation dataset. The deterministic engine remains authoritative; AI is never required to load the dashboard or inspect deterministic results.
 

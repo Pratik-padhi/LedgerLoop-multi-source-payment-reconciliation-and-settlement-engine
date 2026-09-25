@@ -45,3 +45,6 @@ Thumbs.db
 
 # OS
 desktop.ini
+.opencode/
+.claude/
+.github/

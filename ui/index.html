@@ -1,122 +1,207 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>LedgerLoop — Payment Reconciliation</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f3f1eb">
+  <meta name="description" content="LedgerLoop is a deterministic, evidence-led payment reconciliation and settlement engine for investigating financial exceptions with source-row traceability.">
+  <title>LedgerLoop — Payment Reconciliation & Settlement Engine</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='13' fill='%23112f4c'/><path d='M17 15v34h30' fill='none' stroke='%23fff' stroke-width='7' stroke-linecap='square'/><path d='M27 15v24h20' fill='none' stroke='%23d6a84b' stroke-width='4'/></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
 </head>
 <body>
-<div class="app">
-  <!-- Sidebar -->
-  <aside class="sidebar" role="navigation" aria-label="Main navigation">
-    <div class="sidebar-brand">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 12a8 8 0 0 1 14-5.3"/>
-        <polyline points="4 4 4 8 8 8"/>
-        <path d="M20 12a8 8 0 0 1-14 5.3"/>
-        <polyline points="20 20 20 16 16 16"/>
-      </svg>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="masthead">
+        <button class="brand" type="button" data-jump-panel="overview" aria-label="Go to LedgerLoop overview">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none">
+              <path d="M7.5 5.5v21h17" stroke="currentColor" stroke-width="3" stroke-linecap="square"/>
+              <path d="M13 5.5v15.5h11.5" stroke="var(--brand-accent)" stroke-width="2" stroke-linecap="square"/>
+            </svg>
+          </span>
+          <span class="brand-copy">
+            <strong>LedgerLoop</strong>
+            <span>Payment operations, made inspectable</span>
+          </span>
+        </button>
+
+        <div class="header-tools">
+          <a class="source-link" href="https://github.com/Pratik-padhi/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine" target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3.3-.4 6.8-1.6 6.8-7.4A5.8 5.8 0 0 0 19.3 3 5.4 5.4 0 0 0 19.1 0S17.9-.4 15 1.5a13.4 13.4 0 0 0-7 0C5.1-.4 3.9 0 3.9 0a5.4 5.4 0 0 0-.2 3A5.8 5.8 0 0 0 2.2 7.1c0 5.8 3.5 7 6.8 7.4A4.8 4.8 0 0 0 8 18v4"/><path d="M8 19c-3 .9-3-1.5-4.2-2"/></svg>
+            <span>Source</span>
+          </a>
+          <div class="run-status state-neutral" id="header-run-status" role="status" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="header-run-status-text">Run pending</span>
+          </div>
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to dark theme">
+            <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z"/></svg>
+            <span id="theme-label">Dark</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="navigation-row">
+        <nav class="nav" id="nav" aria-label="Primary navigation">
+          <button class="nav-item active" type="button" data-panel="overview" aria-current="page">
+            <span class="nav-index">01</span>
+            <span class="nav-copy"><strong>Overview</strong><small>Case study</small></span>
+          </button>
+          <button class="nav-item" type="button" data-panel="runs">
+            <span class="nav-index">02</span>
+            <span class="nav-copy"><strong>Pipeline</strong><small>Run trace</small></span>
+          </button>
+          <button class="nav-item" type="button" data-panel="exceptions">
+            <span class="nav-index">03</span>
+            <span class="nav-copy"><strong>Exceptions</strong><small>Investigate</small></span>
+            <span class="badge" id="exc-badge" hidden>0</span>
+          </button>
+          <button class="nav-item" type="button" data-panel="transactions">
+            <span class="nav-index">04</span>
+            <span class="nav-copy"><strong>Transactions</strong><small>Source index</small></span>
+          </button>
+          <button class="nav-item" type="button" data-panel="qa">
+            <span class="nav-index">05</span>
+            <span class="nav-copy"><strong>Intelligence</strong><small>Grounded Q&amp;A</small></span>
+          </button>
+        </nav>
+        <div class="nav-context" aria-label="Demo context">
+          <span class="context-pulse" aria-hidden="true"></span>
+          <span>Deterministic demo</span>
+          <span class="context-divider" aria-hidden="true"></span>
+          <span>No upload required</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="main" id="main-content" role="main" tabindex="-1">
+      <section class="panel active" id="panel-overview" aria-labelledby="overview-heading">
+        <div class="project-intro">
+          <div class="intro-copy">
+            <span class="section-label">Fintech engineering case study</span>
+            <h1 id="overview-heading">Reconciliation that shows its work.</h1>
+            <p class="intro-lede">LedgerLoop reconciles gateway, bank, and internal-ledger records through a deterministic-first pipeline—then preserves the status, reason, evidence, and action behind every outcome.</p>
+            <div class="intro-actions">
+              <button class="btn btn-primary" type="button" data-jump-panel="exceptions">
+                Investigate an exception <span class="count-reference" id="overview-exception-cta-count"></span>
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg>
+              </button>
+              <button class="btn btn-secondary" type="button" data-jump-panel="transactions">Trace a transaction</button>
+            </div>
+            <ul class="trust-points" aria-label="System principles">
+              <li><span aria-hidden="true">01</span> Deterministic first</li>
+              <li><span aria-hidden="true">02</span> Source-row evidence</li>
+              <li><span aria-hidden="true">03</span> Guarded AI, human review</li>
+            </ul>
+          </div>
+
+          <aside class="project-note" aria-labelledby="system-stance-title">
+            <div class="project-note-head">
+              <span class="section-label">System stance</span>
+              <span class="case-label">Case file 01</span>
+            </div>
+            <h2 id="system-stance-title">Resolve automatically only when the evidence is sufficient.</h2>
+            <p>The engine favors an explicit unresolved result over a confident but unsupported financial match.</p>
+            <dl class="system-facts">
+              <div><dt>Decision authority</dt><dd>Python rules</dd></div>
+              <div><dt>AI role</dt><dd>Advisory</dd></div>
+              <div><dt>Output contract</dt><dd>Status → reason → evidence</dd></div>
+            </dl>
+          </aside>
+        </div>
+
+        <section class="engineering-highlights" aria-labelledby="highlights-title">
+          <div class="highlights-intro">
+            <span class="section-label">Review lens</span>
+            <h2 id="highlights-title">What this project demonstrates</h2>
+          </div>
+          <div class="highlight-item"><span>01</span><div><strong>Financial correctness</strong><p>Exact, bounded, linked, and split-settlement matching with one-to-one source consumption.</p></div></div>
+          <div class="highlight-item"><span>02</span><div><strong>Auditability</strong><p>Source rows, tier history, reasons, and settlement arithmetic remain visible in the interface.</p></div></div>
+          <div class="highlight-item"><span>03</span><div><strong>Responsible AI</strong><p>Gemini is explicit, bounded, and validated in Python before any recommendation can affect state.</p></div></div>
+        </section>
+
+        <div id="overview-content">
+          <div class="loading" role="status" aria-live="polite">Preparing the current reconciliation run…</div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-runs" aria-labelledby="runs-heading">
+        <div class="panel-head">
+          <div class="panel-heading-group">
+            <span class="panel-eyebrow">System trace</span>
+            <h1 class="panel-title" id="runs-heading">Reconciliation Runs</h1>
+            <p class="panel-subtitle" id="runs-subtitle">Current run context, stage handoffs, and control boundaries.</p>
+          </div>
+          <div class="panel-head-actions">
+            <button class="btn btn-secondary btn-sm" type="button" data-jump-panel="transactions">Open source index</button>
+            <button class="btn btn-primary btn-sm" type="button" data-jump-panel="exceptions">Review exceptions</button>
+          </div>
+        </div>
+        <div id="runs-content">
+          <div class="loading" role="status" aria-live="polite">Loading the current run…</div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-exceptions" aria-labelledby="exceptions-heading">
+        <div class="panel-head">
+          <div class="panel-heading-group">
+            <span class="panel-eyebrow">Evidence workspace</span>
+            <h1 class="panel-title" id="exceptions-heading">Exception investigation</h1>
+            <p class="panel-subtitle">Select a discrepancy to inspect the decision, source evidence, settlement position, and next action.</p>
+          </div>
+        </div>
+        <div id="exceptions-content">
+          <div class="loading" role="status" aria-live="polite">Loading the exception queue…</div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-transactions" aria-labelledby="transactions-heading">
+        <div class="panel-head">
+          <div class="panel-heading-group">
+            <span class="panel-eyebrow">Authoritative index</span>
+            <h1 class="panel-title" id="transactions-heading">Transaction ledger</h1>
+            <p class="panel-subtitle">Search every logical transaction and trace its match, settlement, and exception state.</p>
+          </div>
+        </div>
+        <div id="transactions-content">
+          <div class="loading" role="status" aria-live="polite">Loading the transaction ledger…</div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-qa" aria-labelledby="qa-heading">
+        <div class="panel-head">
+          <div class="panel-heading-group">
+            <span class="panel-eyebrow">Grounded analysis</span>
+            <h1 class="panel-title" id="qa-heading">Settlement Intelligence</h1>
+            <p class="panel-subtitle">Review the deterministic settlement position, then ask bounded questions over stored evidence.</p>
+          </div>
+        </div>
+        <div id="qa-content">
+          <div class="empty-msg">Open this view to load the settlement position and grounded question interface.</div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
       <div>
-        <span class="brand-name">LedgerLoop</span>
-        <span class="brand-sub">Reconciliation Engine</span>
+        <span class="footer-brand">LedgerLoop</span>
+        <span>Deterministic payment reconciliation and settlement engine.</span>
       </div>
-    </div>
-
-    <div class="nav-section-label">Workspace</div>
-    <nav class="nav" id="nav">
-      <button class="nav-item active" data-panel="overview" aria-current="page">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        <span class="nav-label-full">Overview</span>
-        <span class="nav-label-short">Overview</span>
-      </button>
-      <button class="nav-item" data-panel="exceptions">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span class="nav-label-full">Exceptions</span>
-        <span class="nav-label-short">Exceptions</span>
-        <span class="badge" id="exc-badge" style="display:none">0</span>
-      </button>
-      <button class="nav-item" data-panel="transactions">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        <span class="nav-label-full">Transactions</span>
-        <span class="nav-label-short">Txns</span>
-      </button>
-      <button class="nav-item" data-panel="qa">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span class="nav-label-full">Settlement Intelligence</span>
-        <span class="nav-label-short">Intelligence</span>
-      </button>
-    </nav>
-
-    <div class="sidebar-footer">
-      <div class="sidebar-status-pill" id="pipeline-status">Pipeline complete</div>
-      <button class="theme-toggle btn btn-secondary" id="theme-toggle" aria-label="Toggle theme">
-        <span id="theme-icon">☀️</span>
-        <span id="theme-label">Light</span>
-      </button>
-    </div>
-  </aside>
-
-  <!-- Main -->
-  <main class="main" role="main">
-    <!-- Overview Panel -->
-    <section class="panel active" id="panel-overview">
-      <div class="panel-head">
-        <div>
-          <h1>Reconciliation Overview</h1>
-          <span class="panel-subtitle" id="overview-subtitle"></span>
-        </div>
-        <div class="panel-head-actions">
-          <button class="btn btn-secondary btn-sm" data-jump-panel="exceptions">
-            Review exceptions <span id="overview-exception-cta-count"></span>
-          </button>
-          <button class="btn btn-primary btn-sm" data-jump-panel="transactions">
-            Explore transactions
-          </button>
-        </div>
+      <div class="footer-meta">
+        <span>Synthetic demo data</span>
+        <span aria-hidden="true">·</span>
+        <a href="https://github.com/Pratik-padhi/LedgerLoop-multi-source-payment-reconciliation-and-settlement-engine" target="_blank" rel="noreferrer">View source on GitHub</a>
       </div>
-      <div id="overview-content">
-        <div class="loading" role="status" aria-live="polite">Preparing reconciliation data…</div>
-      </div>
-    </section>
-
-    <!-- Exceptions Panel -->
-    <section class="panel" id="panel-exceptions">
-      <div class="panel-head">
-        <h1>Exceptions Requiring Attention</h1>
-      </div>
-      <div id="exceptions-content">
-        <div class="loading">Loading…</div>
-      </div>
-    </section>
-
-    <!-- Transactions Panel -->
-    <section class="panel" id="panel-transactions">
-      <div class="panel-head">
-        <h1>Transaction Explorer</h1>
-      </div>
-      <div id="transactions-content">
-        <div class="loading">Loading…</div>
-      </div>
-    </section>
-
-    <!-- Q&A Panel -->
-    <section class="panel" id="panel-qa">
-      <div class="panel-head">
-        <h1>Settlement Intelligence</h1>
-        <span class="panel-subtitle">Grounded, read-only reconciliation analysis</span>
-      </div>
-      <div id="qa-content">
-        <div class="empty-msg">Select this tab to load the question interface.</div>
-      </div>
-    </section>
-  </main>
-</div>
-
-<script src="app.js"></script>
+    </footer>
+  </div>
 </body>
 </html>
