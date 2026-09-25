@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f0f1f1">
-  <title>LedgerLoop â€” Multi-source payment reconciliation and settlement engine</title>
+  <title>LedgerLoop — Multi-source payment reconciliation and settlement engine</title>
   <meta name="description" content="LedgerLoop reconciles payment gateway, bank settlement, and internal-ledger records through a deterministic-first pipeline, then settles the residue with Decimal arithmetic. Every outcome keeps its status, reason, evidence, and source rows.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'><rect width='26' height='26' rx='3' fill='%230f1113'/><path d='M7 5v16h8' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='square'/><path d='M12 5v10h8' fill='none' stroke='%23d4795f' stroke-width='1.8' stroke-linecap='square'/></svg>">
   <link rel="preload" href="fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -56,7 +56,7 @@
   </header>
 
   <main id="main">
-    <!-- â•â• The run: first viewport is the thesis, not a header â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══ The run: first viewport is the thesis, not a header ══════════════ -->
     <section class="hero">
       <div class="shell">
         <div class="hero__grid">
@@ -77,7 +77,7 @@
               <a class="btn btn--quiet" href="#evidence">Trace one transaction</a>
             </div>
             <div class="hero__meta">
-              <span class="meta">Stack Â· Python, Flask, SQLite, Gunicorn</span>
+              <span class="meta">Stack · Python, Flask, SQLite, Gunicorn</span>
               <span class="hero__meta-div" aria-hidden="true"></span>
               <span class="meta" id="source-scope">Synthetic dataset</span>
             </div>
@@ -85,7 +85,7 @@
 
           <dl class="hero__aside glance glance--stack" aria-label="At a glance">
             <div class="glance__cell"><dt>Category</dt><dd>Payments &amp; fintech infrastructure</dd></div>
-            <div class="glance__cell"><dt>Problem</dt><dd>Gateway, bank, and ledger disagree â€” and the difference is money</dd></div>
+            <div class="glance__cell"><dt>Problem</dt><dd>Gateway, bank, and ledger disagree — and the difference is money</dd></div>
             <div class="glance__cell"><dt>Approach</dt><dd>Tiered deterministic matching, then guarded AI adjudication</dd></div>
             <div class="glance__cell"><dt>Surface</dt><dd>Read-only JSON API plus this browser console</dd></div>
           </dl>
@@ -94,8 +94,8 @@
         <!-- Readout: press any figure and it prints its own evidence -->
         <div class="readout" id="readout" data-state="loading">
           <div class="readout__head">
-            <span class="label">Live run Â· read-only</span>
-            <span class="label" id="readout-identity">Resolving the pipelineâ€¦</span>
+            <span class="label">Live run · read-only</span>
+            <span class="label" id="readout-identity">Resolving the pipeline…</span>
           </div>
           <div class="readout__cells" id="readout-cells" role="group" aria-label="Live run figures. Select a figure to print its derivation."></div>
           <div class="drawer" id="figure-drawer" hidden>
@@ -112,9 +112,9 @@
         <!-- The command line: the real, bounded Settlement Q&A -->
         <form class="command" id="pitch-command" autocomplete="off">
           <div class="command__bar">
-            <label class="command__prompt" for="pitch-command-input">ask&nbsp;â€º</label>
+            <label class="command__prompt" for="pitch-command-input">ask&nbsp;›</label>
             <input class="command__input" id="pitch-command-input" name="question" type="text"
-                   placeholder="Ask this run a bounded questionâ€¦" aria-describedby="pitch-command-hint">
+                   placeholder="Ask this run a bounded question…" aria-describedby="pitch-command-hint">
             <button class="btn btn--sm btn--primary" type="submit">Run</button>
           </div>
           <div class="command__out" id="pitch-command-out" hidden aria-live="polite"></div>
@@ -133,7 +133,7 @@
       </div>
     </section>
 
-    <!-- â•â• Mechanism â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══ Mechanism ══════════════════════════════════════════════════════ -->
     <section class="section" id="mechanism">
       <div class="shell">
         <div class="section__head">
@@ -187,7 +187,7 @@
       </div>
     </section>
 
-    <!-- â•â• Evidence â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══ Evidence ══════════════════════════════════════════════════════ -->
     <section class="section" id="evidence">
       <div class="shell">
         <div class="section__head">
@@ -204,7 +204,7 @@
       </div>
     </section>
 
-    <!-- â•â• Guardrails â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══ Guardrails ═════════════════════════════════════════════════════ -->
     <section class="section" id="guardrails">
       <div class="shell">
         <div class="section__head">
@@ -251,9 +251,9 @@
 
           <div class="stack">
             <div class="counter-strip" id="governance-counters">
-              <div class="counter"><b class="counter__n">â€”</b><span class="label counter__k">Provider calls</span></div>
-              <div class="counter"><b class="counter__n">â€”</b><span class="label counter__k">Validated</span></div>
-              <div class="counter"><b class="counter__n">â€”</b><span class="label counter__k">Rejected</span></div>
+              <div class="counter"><b class="counter__n">—</b><span class="label counter__k">Provider calls</span></div>
+              <div class="counter"><b class="counter__n">—</b><span class="label counter__k">Validated</span></div>
+              <div class="counter"><b class="counter__n">—</b><span class="label counter__k">Rejected</span></div>
             </div>
             <div class="callout">
               <strong>Offline is a supported mode, not a degraded one</strong>
@@ -276,7 +276,7 @@
       </div>
     </section>
 
-    <!-- â•â• Stack â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══ Stack ══════════════════════════════════════════════════════════ -->
     <section class="section" id="stack">
       <div class="shell">
         <div class="section__head">
@@ -295,7 +295,7 @@
             <div class="glance__cell"><dt>Storage</dt><dd>SQLite run snapshots plus an audit trail</dd></div>
             <div class="glance__cell"><dt>Frontend</dt><dd>Hand-authored HTML, CSS, and vanilla JS</dd></div>
             <div class="glance__cell"><dt>Matching</dt><dd>Tier 1 exact, Tier 2 bounded tolerance, Tier 3 linked and guarded AI, Stage 3 split settlement</dd></div>
-            <div class="glance__cell"><dt>Arithmetic</dt><dd><span class="mono">Decimal</span> â€” gross + gst âˆ’ tds âˆ’ mdr âˆ’ mdr_gst âˆ’ fee âˆ’ refund</dd></div>
+            <div class="glance__cell"><dt>Arithmetic</dt><dd><span class="mono">Decimal</span> — gross + gst − tds − mdr − mdr_gst − fee − refund</dd></div>
             <div class="glance__cell"><dt>Adapters</dt><dd>Explicit <span class="mono">SourceSchema</span> header mapping per source</dd></div>
             <div class="glance__cell"><dt>Deploy</dt><dd>Render blueprint, free plan, Singapore region</dd></div>
           </dl>
@@ -330,7 +330,7 @@
                 <div class="shell-line"><span class="shell-line__ps1" aria-hidden="true">$</span><span class="shell-line__cmd">python -m pip install -r requirements.txt</span></div>
                 <div class="shell-line"><span class="shell-line__ps1" aria-hidden="true">$</span><span class="shell-line__cmd">python scripts/validate_dataset.py</span></div>
                 <div class="shell-line"><span class="shell-line__ps1" aria-hidden="true">$</span><span class="shell-line__cmd">python -m pytest -q</span></div>
-                <div class="shell-line"><span class="shell-line__ps1" aria-hidden="true">$</span><span class="shell-line__cmd">python app.py <em>â†’ http://localhost:5000</em></span></div>
+                <div class="shell-line"><span class="shell-line__ps1" aria-hidden="true">$</span><span class="shell-line__cmd">python app.py <em>→ http://localhost:5000</em></span></div>
               </div>
               <p class="drawer__note" style="margin-top:.5rem">
                 Importing the Flask app runs nothing. The first <span class="mono">/api/*</span> request builds
@@ -343,7 +343,7 @@
       </div>
     </section>
 
-    <!-- â•â• Close â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+    <!-- ══ Close ══════════════════════════════════════════════════════════ -->
     <section class="section section--close">
       <div class="shell cta-band">
         <h2>Read the console before you read the code.</h2>

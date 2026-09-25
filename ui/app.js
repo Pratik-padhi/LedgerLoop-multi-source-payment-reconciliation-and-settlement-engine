@@ -1,20 +1,20 @@
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   LedgerLoop â€” The Settlement Terminal
+/* ═══════════════════════════════════════════════════════════════════════════
+   LedgerLoop — The Settlement Terminal
    One application file, two surfaces:
-     data-surface="pitch"    â†’ the project page (/)
-     data-surface="console"  â†’ the operator console (/app)
+     data-surface="pitch"    → the project page (/)
+     data-surface="console"  → the operator console (/app)
 
    Every endpoint is read-only. The only stateful calls are the explicit
    retry / review actions, and those never mutate a stored result except by
    re-running the pipeline's own adjudication for one transaction.
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+   ═══════════════════════════════════════════════════════════════════════════ */
 (function () {
   "use strict";
 
   var API = "";
   var surface = document.body.getAttribute("data-surface");
 
-  /* â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── State ─────────────────────────────────────────────────────────── */
 
   var _overview = null;
   var _exceptions = null;
@@ -35,10 +35,10 @@
   function setSourceScope() {
     var scope = document.getElementById("source-scope");
     if (!scope || !_overview) return;
-    scope.textContent = "Synthetic dataset Â· " + num(count(_overview.gateway_rows) + count(_overview.bank_rows) + count(_overview.ledger_rows)) + " source rows, no upload";
+    scope.textContent = "Synthetic dataset · " + num(count(_overview.gateway_rows) + count(_overview.bank_rows) + count(_overview.ledger_rows)) + " source rows, no upload";
   }
 
-  /* â”€â”€ Formatting and small helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Formatting and small helpers ──────────────────────────────────── */
 
   function esc(s) {
     if (s == null) return "";
@@ -60,9 +60,9 @@
 
   /* Money is printed as a code, not a glyph: the terminal's unit. */
   function inr(v) {
-    if (v == null || v === "") return "â€”";
+    if (v == null || v === "") return "—";
     var n = typeof v === "string" ? parseFloat(v) : v;
-    if (!isFinite(n)) return "â€”";
+    if (!isFinite(n)) return "—";
     return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
@@ -83,12 +83,12 @@
     return String(key || "").replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
   function evidenceText(value) {
-    if (value === null || value === undefined) return "â€”";
+    if (value === null || value === undefined) return "—";
     if (Array.isArray(value)) return "[" + value.map(evidenceText).join(", ") + "]";
     if (typeof value === "object") {
       return Object.entries(value).map(function (pair) {
         return humanizeKey(pair[0]) + ": " + evidenceText(pair[1]);
-      }).join(" Â· ");
+      }).join(" · ");
     }
     return String(value);
   }
@@ -105,7 +105,7 @@
   var STATUS_LABEL = { PARTIAL_PAYMENT: "PARTIAL", UNRESOLVED_FOR_TIER_1: "UNRESOLVED" };
 
   function statusTag(status) {
-    if (!status) return '<span class="tag tag--quiet">â€”</span>';
+    if (!status) return '<span class="tag tag--quiet">—</span>';
     var tone = STATUS_TONE[status] || "quiet";
     var label = STATUS_LABEL[status] || status;
     return '<span class="tag' + (tone === "quiet" ? " tag--quiet" : tone === "oxide" ? " tag--oxide" : " tag--ink") +
@@ -171,7 +171,7 @@
     if (wrap) wrap.className = "run-status state-" + (state || "neutral");
   }
 
-  /* â”€â”€ Theme â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Theme ─────────────────────────────────────────────────────────── */
 
   var THEME_STORAGE_KEY = "ledgerloop-theme-v1";
 
@@ -200,9 +200,9 @@
     if (themeColor) themeColor.setAttribute("content", dark ? "#0d0e0f" : "#f0f1f1");
   }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     SHARED â€” the settlement identity, printed as arithmetic
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+  /* ═══════════════════════════════════════════════════════════════════════
+     SHARED — the settlement identity, printed as arithmetic
+     ═══════════════════════════════════════════════════════════════════════ */
 
   function ledgerLine(label, value, kind) {
     var cls = "ledger__line" + (kind ? " ledger__line--" + kind : "");
@@ -243,9 +243,9 @@
     }).join("") + "</dl>";
   }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     SHARED â€” the resolution path (four passes, live counts)
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+  /* ═══════════════════════════════════════════════════════════════════════
+     SHARED — the resolution path (four passes, live counts)
+     ═══════════════════════════════════════════════════════════════════════ */
 
   function passDefinitions(d, short) {
     var t1 = d.tier1_summary || {};
@@ -269,14 +269,14 @@
       },
       {
         code: "T3", name: "Linked evidence",
-        rule: short ? "Linked refund, TDS, description" : "Refund, TDS, description links â€” then guarded AI adjudication",
+        rule: short ? "Linked refund, TDS, description" : "Refund, TDS, description links — then guarded AI adjudication",
         evaluated: count(firstValue(t3.total_residue_evaluated, t3.total_residue)),
         resolved: count(t3.match_count),
         forwarded: count(t3.unresolved_count)
       },
       {
         code: "S3", name: "Split settlement",
-        rule: short ? "Multiple credits, tax, fees" : "Multiple credits, tax, fees, refund â€” Decimal arithmetic",
+        rule: short ? "Multiple credits, tax, fees" : "Multiple credits, tax, fees, refund — Decimal arithmetic",
         evaluated: count(t4.total_evaluated),
         resolved: count(t4.match_count),
         forwarded: count(t4.unresolved_count)
@@ -300,9 +300,9 @@
     return passDefinitions(d, short).map(passRow).join("");
   }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     SHARED â€” Grounded Q&A
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+  /* ═══════════════════════════════════════════════════════════════════════
+     SHARED — Grounded Q&A
+     ═══════════════════════════════════════════════════════════════════════ */
 
   var _followUps = {
     LOOKUP: ["What is the status?", "What is the variance for it?", "Which tier resolved it?"],
@@ -316,7 +316,7 @@
   function citationsHtml(citations) {
     if (!Array.isArray(citations) || !citations.length) return "";
     return '<div class="command__cites">' + citations.map(function (c) {
-      return '<span class="tag tag--quiet">' + esc(c.source || "source") + " " + esc(c.source_row_id || "â€”") + "</span>";
+      return '<span class="tag tag--quiet">' + esc(c.source || "source") + " " + esc(c.source_row_id || "—") + "</span>";
     }).join("") + "</div>";
   }
 
@@ -325,7 +325,7 @@
     if (data.source === "DETERMINISTIC_SETTLEMENT") meta.push("deterministic settlement");
     else if (data.llm_used) meta.push("ai-assisted explanation");
     else meta.push("stored evidence answer");
-    if (data.llm_unavailable) meta.push("ai unavailable Â· deterministic fallback");
+    if (data.llm_unavailable) meta.push("ai unavailable · deterministic fallback");
     if (data.found === false) meta.push("not found");
     if (data.supported === false) meta.push("unsupported");
     return meta;
@@ -354,7 +354,7 @@
     var actions = "";
     if (tid) {
       actions += '<button class="btn btn--sm btn--quiet" type="button" data-answer-action="view" data-tid="' + esc(tid) + '">View transaction</button>';
-      actions += '<button class="btn btn--sm btn--quiet" type="button" data-answer-action="review" data-tid="' + esc(tid) + '">AI review Â· read-only</button>';
+      actions += '<button class="btn btn--sm btn--quiet" type="button" data-answer-action="review" data-tid="' + esc(tid) + '">AI review · read-only</button>';
     }
     if (tid && actionStatus === "AI_RETRY_REQUIRED" && actionTier === "TIER_3") {
       actions += '<button class="btn btn--sm btn--oxide" type="button" data-answer-action="retry" data-tid="' + esc(tid) + '">Retry adjudication</button>';
@@ -384,7 +384,7 @@
 
     var pending = document.createElement("div");
     pending.className = "log__item";
-    pending.innerHTML = '<span class="log__q">' + esc(question) + '</span><p class="log__a dim">Checking the grounded answerâ€¦</p>';
+    pending.innerHTML = '<span class="log__q">' + esc(question) + '</span><p class="log__a dim">Checking the grounded answer…</p>';
     log.appendChild(pending);
 
     try {
@@ -412,7 +412,7 @@
         if (action === "view") { openTransaction(tid); return; }
         btn.disabled = true;
         var label = btn.textContent;
-        btn.textContent = "Workingâ€¦";
+        btn.textContent = "Working…";
         var scope = btn.closest(".log__item") || btn.parentNode;
         if (action === "review") reviewTransaction(tid, btn, label, scope);
         else if (action === "retry") retryTransaction(tid, btn, label, "retry-llm", scope);
@@ -420,9 +420,9 @@
     });
   }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     PITCH â€” the first viewport is the run
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+  /* ═══════════════════════════════════════════════════════════════════════
+     PITCH — the first viewport is the run
+     ═══════════════════════════════════════════════════════════════════════ */
 
   var FIGURES = {
     rate: {
@@ -430,7 +430,7 @@
       foot: function (d) {
         var sc = d.status_counts || {};
         var matched = count(sc.MATCH) + count(sc.MATCHED);
-        return matched + " resolved Â· " + Math.max(count(d.total_transactions) - matched, 0) + " open";
+        return matched + " resolved · " + Math.max(count(d.total_transactions) - matched, 0) + " open";
       },
       figure: function (d) { return pct(d.reconciliation_rate); },
       /* The unit is authored apart from the figure so it can be set at the
@@ -458,7 +458,7 @@
     rows: {
       label: "Source rows", code: "src",
       foot: function (d) {
-        return count(d.gateway_rows) + " gateway Â· " + count(d.bank_rows) + " bank Â· " + count(d.ledger_rows) + " ledger";
+        return count(d.gateway_rows) + " gateway · " + count(d.bank_rows) + " bank · " + count(d.ledger_rows) + " ledger";
       },
       figure: function (d) { return num(count(d.gateway_rows) + count(d.bank_rows) + count(d.ledger_rows)); },
       note: "Rows normalized into canonical records for this run. Source-row IDs and raw values are preserved end to end.",
@@ -539,8 +539,8 @@
 
     var identity = document.getElementById("readout-identity");
     if (identity) {
-      identity.textContent = "profile " + (d.dataset || "data") + " Â· " + count(d.gateway_rows) + "/" +
-        count(d.bank_rows) + "/" + count(d.ledger_rows) + " rows gw/bank/ledger Â· " +
+      identity.textContent = "profile " + (d.dataset || "data") + " · " + count(d.gateway_rows) + "/" +
+        count(d.bank_rows) + "/" + count(d.ledger_rows) + " rows gw/bank/ledger · " +
         ((d.llm_models || [])[0] || "no model chain");
     }
     setSourceScope();
@@ -569,7 +569,7 @@
     var wasOpen = !drawer.hidden;
     closeDrawer();
 
-    document.getElementById("drawer-title").textContent = fig.label + " â€” derivation";
+    document.getElementById("drawer-title").textContent = fig.label + " — derivation";
     document.getElementById("drawer-note").textContent = fig.note;
     document.getElementById("drawer-rows").innerHTML = fig.rows(_overview).map(function (row) {
       return '<div class="drawer-row"><span>' + esc(row[0]) + "</span><span>" + esc(String(row[1])) + "</span></div>";
@@ -581,7 +581,7 @@
     if (wasOpen) return;
 
     /* The leader: a hairline drops from the pressed column to the evidence.
-       Reading the rects forces layout, so this needs no animation frame â€” and
+       Reading the rects forces layout, so this needs no animation frame — and
        must not depend on one, or the leader can be missing in a paused or
        headless renderer. */
     var gap = drawer.getBoundingClientRect().top - btn.getBoundingClientRect().bottom;
@@ -602,7 +602,7 @@
     }).join("");
   }
 
-  /* â”€â”€ Evidence trace: one transaction, end to end â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Evidence trace: one transaction, end to end ─────────────────── */
 
   function traceChip(index, source, id, role) {
     return '<button class="row-chip" type="button" data-role="' + esc(role) + '" aria-expanded="false">' +
@@ -663,7 +663,7 @@
           '<div class="rows">' + chips + "</div>" +
           '<p class="drawer__note" id="trace-role">Press a row to read the role it played in this decision.</p>' +
           '<div class="subhead" style="margin-top:1rem">' +
-            '<span class="label subhead__label">Reason Â· ' + esc(d.reason || "none recorded") + "</span>" +
+            '<span class="label subhead__label">Reason · ' + esc(d.reason || "none recorded") + "</span>" +
             evidenceRows(d.evidence) +
             (residue ? '<p class="drawer__note" style="margin-top:.5rem">' + residue + "</p>" : "") +
           "</div>" +
@@ -671,7 +671,7 @@
         '<div class="trace__col">' +
           '<p class="label trace__label">Settlement identity</p>' +
           settlementLedger(s, { all: true }) +
-          '<p class="drawer__note">Computed in <span class="mono">Decimal</span> as gross + gst âˆ’ tds âˆ’ mdr âˆ’ mdr gst âˆ’ fees âˆ’ refund. ' +
+          '<p class="drawer__note">Computed in <span class="mono">Decimal</span> as gross + gst − tds − mdr − mdr gst − fees − refund. ' +
           (s.gst_consistency ? "GST consistency: " + esc(String(s.gst_consistency).toLowerCase().replace(/_/g, " ")) + ". " : "") +
           "Variance is reported, never forced to zero.</p>" +
           '<a class="btn btn--sm btn--quiet" style="margin-top:1rem" href="/app?txn=' + encodeURIComponent(id) + '">Open in the console' +
@@ -690,7 +690,7 @@
     });
   }
 
-  /* â”€â”€ Command line (pitch) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Command line (pitch) ─────────────────────────────────────────── */
 
   function initPitchCommand() {
     var form = document.getElementById("pitch-command");
@@ -704,7 +704,7 @@
       if (!question) return;
       input.value = "";
       out.hidden = false;
-      out.innerHTML = '<div class="command__q">' + esc(question) + '</div><p class="command__a dim" style="margin-top:.4rem">Checking the grounded answerâ€¦</p>';
+      out.innerHTML = '<div class="command__q">' + esc(question) + '</div><p class="command__a dim" style="margin-top:.4rem">Checking the grounded answer…</p>';
       fetchJson("/api/qa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -720,7 +720,7 @@
             : "") +
           citationsHtml(data.citations) +
           '<div class="command__meta">' + answerMeta(data).map(function (m) { return "<span>" + esc(m) + "</span>"; }).join("") +
-          (facts.length ? "<span>" + esc(facts.join(" Â· ")) + "</span>" : "") + "</div>";
+          (facts.length ? "<span>" + esc(facts.join(" · ")) + "</span>" : "") + "</div>";
       }).catch(function (err) {
         out.innerHTML = '<div class="command__q">' + esc(question) + '</div><p class="command__a oxide" style="margin-top:.4rem">' + esc(err.message) + "</p>";
       });
@@ -737,7 +737,7 @@
     });
   }
 
-  /* â”€â”€ Scroll spy for the pitch nav â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Scroll spy for the pitch nav ─────────────────────────────────── */
 
   function initScrollSpy() {
     var links = document.querySelectorAll('.masthead__nav a[href^="#"]');
@@ -820,9 +820,9 @@
     await loadTrace();
   }
 
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     CONSOLE â€” panels
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+  /* ═══════════════════════════════════════════════════════════════════════
+     CONSOLE — panels
+     ═══════════════════════════════════════════════════════════════════════ */
 
   var PANEL_META = {
     overview: "Overview",
@@ -834,7 +834,7 @@
 
   function updateHeader(pid) {
     var title = PANEL_META[pid] || PANEL_META.overview;
-    document.title = title + " â€” LedgerLoop console";
+    document.title = title + " — LedgerLoop console";
   }
 
   function switchPanel(pid) {
@@ -891,7 +891,7 @@
     if (cta) cta.textContent = count(d.exception_count) > 0 ? "(" + count(d.exception_count) + ")" : "";
   }
 
-  /* â”€â”€ Overview â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Overview ─────────────────────────────────────────────────────── */
 
   async function loadOverview() {
     var host = document.getElementById("overview-content");
@@ -948,7 +948,7 @@
     ];
 
     host.innerHTML =
-      '<div class="block"><div class="block__head"><h2>Current run</h2><p>Read-only snapshot Â· profile ' + esc(d.dataset || "data") + "</p></div>" +
+      '<div class="block"><div class="block__head"><h2>Current run</h2><p>Read-only snapshot · profile ' + esc(d.dataset || "data") + "</p></div>" +
         '<div class="metrics">' + metrics.map(function (m) {
           return '<div class="metric"><span class="label metric__k">' + esc(m[0]) + '</span><span class="metric__v">' + esc(m[1]) +
             '</span><span class="metric__note">' + esc(m[2]) + "</span></div>";
@@ -977,14 +977,14 @@
             '<div class="metric"><span class="label metric__k">Provider calls</span><span class="metric__v">' + count(d.llm_calls_made) + "</span></div>" +
             '<div class="metric"><span class="label metric__k">Validated</span><span class="metric__v">' + count(d.llm_recommendations_validated) + "</span></div>" +
             '<div class="metric"><span class="label metric__k">Rejected</span><span class="metric__v">' + count(d.llm_recommendations_rejected) + "</span></div>" +
-            '<div class="metric metric--wide"><span class="label metric__k">Model chain</span><span class="metric__v metric__v--wrap">' + esc((d.llm_models || []).join(", ") || "â€”") + "</span></div>" +
+            '<div class="metric metric--wide"><span class="label metric__k">Model chain</span><span class="metric__v metric__v--wrap">' + esc((d.llm_models || []).join(", ") || "—") + "</span></div>" +
           "</div>" +
           '<div class="block__foot">Without <span class="mono">LEDGERLOOP_ENABLE_AI=1</span> and a key, every figure above is still produced by the deterministic tiers.</div>' +
         "</div>" +
       "</div>";
   }
 
-  /* â”€â”€ Pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Pipeline ─────────────────────────────────────────────────────── */
 
   async function loadRuns() {
     var host = document.getElementById("runs-content");
@@ -1008,15 +1008,15 @@
     var d = _overview;
     var sub = document.getElementById("runs-subtitle");
     if (sub) {
-      sub.textContent = "Profile " + (d.dataset || "not exposed") + " Â· " + count(d.gateway_rows) + " gateway rows Â· " +
-        count(d.bank_rows) + " bank rows Â· " + count(d.ledger_rows) + " ledger rows Â· deterministic-first";
+      sub.textContent = "Profile " + (d.dataset || "not exposed") + " · " + count(d.gateway_rows) + " gateway rows · " +
+        count(d.bank_rows) + " bank rows · " + count(d.ledger_rows) + " ledger rows · deterministic-first";
     }
 
     var tierDefinitions = [
-      ["TIER_1", "Tier 1 Â· exact evidence"],
-      ["TIER_2", "Tier 2 Â· bounded tolerance"],
-      ["TIER_3", "Tier 3 Â· linked evidence"],
-      ["STAGE_3", "Stage 3 Â· split settlement"]
+      ["TIER_1", "Tier 1 · exact evidence"],
+      ["TIER_2", "Tier 2 · bounded tolerance"],
+      ["TIER_3", "Tier 3 · linked evidence"],
+      ["STAGE_3", "Stage 3 · split settlement"]
     ];
     var tc = d.tier_counts || {};
     var total = count(d.total_transactions);
@@ -1030,7 +1030,7 @@
 
     var architecture = [
       ["Ingest", "Source normalization", "Explicit SourceSchema header mapping per source; raw values and source-row IDs preserved."],
-      ["Resolve", "Tiered matching", "Exact â†’ bounded tolerance â†’ linked evidence â†’ split settlement, each on the previous residue."],
+      ["Resolve", "Tiered matching", "Exact → bounded tolerance → linked evidence → split settlement, each on the previous residue."],
       ["Control", "Python validation", "One-to-one bank-row consumption and Decimal settlement invariants, enforced in the application."],
       ["Serve", "Read-only snapshot", "Flask JSON endpoints and this console. Importing the app runs nothing; the first API request builds the run."]
     ];
@@ -1071,12 +1071,12 @@
         '<div class="block__body block__body--flush"><div class="path">' +
           architecture.map(function (node, i) {
             return '<div class="path__row"><span class="path__index">' + String(i + 1).padStart(2, "0") + "</span>" +
-              '<div><span class="path__name">' + esc(node[0]) + " Â· " + esc(node[1]) + '</span><span class="path__rule">' + esc(node[2]) + "</span></div></div>";
+              '<div><span class="path__name">' + esc(node[0]) + " · " + esc(node[1]) + '</span><span class="path__rule">' + esc(node[2]) + "</span></div></div>";
           }).join("") +
         "</div></div></div>";
   }
 
-  /* â”€â”€ Exceptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Exceptions ───────────────────────────────────────────────────── */
 
   async function loadExceptions(keepSelection) {
     var host = document.getElementById("exceptions-content");
@@ -1125,7 +1125,7 @@
     host.innerHTML =
       '<div class="toolbar">' +
         '<div class="toolbar__search"><label class="sr-only" for="exception-search">Search the exception queue</label>' +
-          '<input class="field" id="exception-search" type="search" value="' + esc(_excSearch) + '" placeholder="Transaction, reason, source rowâ€¦" autocomplete="off"></div>' +
+          '<input class="field" id="exception-search" type="search" value="' + esc(_excSearch) + '" placeholder="Transaction, reason, source row…" autocomplete="off"></div>' +
         '<div class="filters" role="group" aria-label="Exception filters">' +
           filters.map(function (f) {
             return '<button class="filter" type="button" data-exc-filter="' + f.key + '" aria-pressed="' + (_excFilter === f.key) + '">' + esc(f.label) + "</button>";
@@ -1142,14 +1142,14 @@
           (items.length ? items.map(function (e) {
             var selected = _selectedExc === e.transaction_id;
             return '<tr data-tid="' + esc(e.transaction_id) + '" tabindex="0" class="' + (selected ? "is-selected" : "") + '">' +
-              '<td><span class="id">' + esc(e.transaction_id) + '</span><span class="sub">' + softTokens(e.rule || e.tier || "â€”") + "</span></td>" +
+              '<td><span class="id">' + esc(e.transaction_id) + '</span><span class="sub">' + softTokens(e.rule || e.tier || "—") + "</span></td>" +
               "<td>" + statusTag(e.status) + "</td>" +
               '<td class="num">' + esc(inr(firstValue(e.gateway_amount, e.expected_net, e.received))) + "</td>" +
-              "<td>" + softTokens(e.reason || "â€”") + "</td></tr>";
+              "<td>" + softTokens(e.reason || "—") + "</td></tr>";
           }).join("") : '<tr><td colspan="4"><div class="empty"><strong>No exceptions match</strong>Adjust the filter or the search.</div></td></tr>') +
           "</tbody></table></div></div></div>" +
 
-        '<div class="block" id="exc-detail" aria-live="polite"><div class="block__head"><h2>Investigation</h2><p>Status â†’ reason â†’ evidence â†’ action</p></div>' +
+        '<div class="block" id="exc-detail" aria-live="polite"><div class="block__head"><h2>Investigation</h2><p>Status → reason → evidence → action</p></div>' +
           '<div class="block__body">' +
           (visible && _selectedExc ? skeletonHtml(5)
             : '<div class="empty"><strong>' + (_selectedExc ? "Selection is filtered out" : "Select an exception") + "</strong>" +
@@ -1174,7 +1174,7 @@
     if (_selectedExc && visible) loadExcDetail(_selectedExc);
   }
 
-  /* Keyboard triage: â†‘ â†“ move, Enter opens, Esc clears. */
+  /* Keyboard triage: ↑ ↓ move, Enter opens, Esc clears. */
   function bindQueueTable(root, detailSelector, onSelect, onOpen) {
     var rows = Array.prototype.slice.call(root.querySelectorAll("tbody tr[data-tid]"));
     rows.forEach(function (tr) {
@@ -1226,7 +1226,7 @@
     }
   }
 
-  /* â”€â”€ Transactions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Transactions ─────────────────────────────────────────────────── */
 
   async function loadTransactions() {
     var host = document.getElementById("transactions-content");
@@ -1254,10 +1254,10 @@
   }
 
   function settlementState(row) {
-    if (!row || row.tier !== "STAGE_3") return "â€”";
+    if (!row || row.tier !== "STAGE_3") return "—";
     if (isMatched(row.status)) return "Settled";
     if (row.status === "PARTIAL_PAYMENT") return "Partial";
-    return String(row.status || "â€”").replace(/_/g, " ");
+    return String(row.status || "—").replace(/_/g, " ");
   }
 
   function renderTransactionsPanel() {
@@ -1291,7 +1291,7 @@
 
     function sortHeader(field, label) {
       var active = _txSort.field === field;
-      var mark = active ? (_txSort.dir === "asc" ? "â†‘" : "â†“") : "";
+      var mark = active ? (_txSort.dir === "asc" ? "↑" : "↓") : "";
       return '<th scope="col" aria-sort="' + (active ? (_txSort.dir === "asc" ? "ascending" : "descending") : "none") + '">' +
         '<button class="sort" type="button" data-tx-sort="' + field + '">' + esc(label) +
         (mark ? ' <span class="sort__mark" aria-hidden="true">' + mark + "</span>" : "") + "</button></th>";
@@ -1299,13 +1299,13 @@
 
     /* Five columns, each a distinct dimension: identity, provenance, amount,
        outcome, and the stage that produced it. Settlement state is not a column
-       here â€” it is derivable from outcome plus stage, and its arithmetic lives in
+       here — it is derivable from outcome plus stage, and its arithmetic lives in
        the detail panel where the received, expected and variance figures are. */
 
     host.innerHTML =
       '<div class="toolbar">' +
         '<div class="toolbar__search"><label class="sr-only" for="txn-search">Search transactions</label>' +
-          '<input class="field" id="txn-search" type="search" value="' + esc(_txSearch) + '" placeholder="ID, source row, rule, statusâ€¦" autocomplete="off"></div>' +
+          '<input class="field" id="txn-search" type="search" value="' + esc(_txSearch) + '" placeholder="ID, source row, rule, status…" autocomplete="off"></div>' +
         '<div class="filters" role="group" aria-label="Transaction filters">' +
           filters.map(function (f) {
             return '<button class="filter" type="button" data-tx-filter="' + f.key + '" aria-pressed="' + (_txFilter === f.key) + '">' + esc(f.label) + "</button>";
@@ -1322,10 +1322,10 @@
           "</tr></thead><tbody>" +
           (rows.length ? rows.map(function (r) {
             var selected = _selectedTxn === r.transaction_id;
-            var source = [r.gateway_row].concat(r.bank_row_ids || [], r.ledger_row || []).filter(Boolean).join(" Â· ");
+            var source = [r.gateway_row].concat(r.bank_row_ids || [], r.ledger_row || []).filter(Boolean).join(" · ");
             return '<tr data-tid="' + esc(r.transaction_id) + '" tabindex="0" class="' + (selected ? "is-selected" : "") + '">' +
-              '<td><span class="id">' + esc(r.transaction_id) + '</span><span class="sub">' + softTokens(r.rule || "â€”") + "</span></td>" +
-              '<td class="id" style="font-size:.75rem">' + esc(source || "â€”") + "</td>" +
+              '<td><span class="id">' + esc(r.transaction_id) + '</span><span class="sub">' + softTokens(r.rule || "—") + "</span></td>" +
+              '<td class="id" style="font-size:.75rem">' + esc(source || "—") + "</td>" +
               '<td class="num">' + esc(inr(r.amount)) + "</td>" +
               "<td>" + statusTag(r.status) + "</td>" +
               "<td>" + tierTag(r.tier) + "</td></tr>";
@@ -1369,7 +1369,7 @@
     if (_selectedTxn) loadTxnDetail(_selectedTxn);
   }
 
-  /* â”€â”€ Transaction detail fragment (shared by both panels) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Transaction detail fragment (shared by both panels) ──────────── */
 
   /* Machine output is marked before it exists: the action that asks for it, and
      the plate that returns it, are both a distinct kind of thing from the
@@ -1390,7 +1390,7 @@
     var isStage3 = d.tier === "STAGE_3" && s && Object.keys(s).length > 0;
     var partial = d.status === "PARTIAL_PAYMENT"
       ? '<div class="callout"><strong>Partially settled</strong><p style="margin-top:.25rem">Received INR ' +
-        esc(inr(d.received)) + " Â· outstanding INR " + esc(inr(d.outstanding)) + "</p></div>"
+        esc(inr(d.received)) + " · outstanding INR " + esc(inr(d.outstanding)) + "</p></div>"
       : "";
 
     var actions = "";
@@ -1399,14 +1399,14 @@
       else if (d.tier === "STAGE_3") actions += '<button class="btn btn--sm btn--oxide" type="button" data-retry="retry-stage3">Retry split adjudication</button>';
     }
     actions += '<button class="btn btn--sm btn--machine" type="button" data-retry="ai-review">' +
-      MACHINE_MARK + "AI review Â· read-only</button>";
+      MACHINE_MARK + "AI review · read-only</button>";
 
     var facts = [
-      factRow("Rule", d.rule || "â€”"),
-      factRow("Reason", d.reason || "â€”"),
-      factRow("Gateway row", mr.gateway || d.gateway_row_id || "â€”", true),
-      factRow("Bank rows", bankIds.length ? bankIds.join(", ") : (mr.bank || "â€”"), true),
-      factRow("Ledger row", mr.ledger || d.ledger_row_id || "â€”", true),
+      factRow("Rule", d.rule || "—"),
+      factRow("Reason", d.reason || "—"),
+      factRow("Gateway row", mr.gateway || d.gateway_row_id || "—", true),
+      factRow("Bank rows", bankIds.length ? bankIds.join(", ") : (mr.bank || "—"), true),
+      factRow("Ledger row", mr.ledger || d.ledger_row_id || "—", true),
       factRow("Amount", "INR " + inr(firstValue(d.gateway_amount, s.gross_amount, d.amount, d.received)), true),
       factRow("Expected net", "INR " + inr(firstValue(s.expected_net_amount, s.expected_net, d.expected_net)), true)
     ];
@@ -1414,16 +1414,16 @@
     if (d.confidence != null) facts.push(factRow("Advisory confidence", pct(Number(d.confidence) * 100) + "%", true));
 
     return el("div", { className: "detail" },
-      '<div class="detail__id">' + esc(d.transaction_id || "â€”") + statusTag(d.status) + tierTag(d.tier) + "</div>" +
+      '<div class="detail__id">' + esc(d.transaction_id || "—") + statusTag(d.status) + tierTag(d.tier) + "</div>" +
       '<div class="detail__actions">' + actions + "</div>" +
       '<div class="callout"><strong>Next action</strong><p style="margin-top:.25rem">' + esc(nextActionFor(d.status)) + "</p></div>" +
       partial +
       '<dl class="facts">' + facts.join("") + "</dl>" +
       (isStage3
-        ? '<div class="subhead"><span class="label subhead__label">Settlement Â· Decimal arithmetic</span>' +
+        ? '<div class="subhead"><span class="label subhead__label">Settlement · Decimal arithmetic</span>' +
           settlementLedger(s) + "</div>"
         : "") +
-      '<div class="subhead subhead--authority"><span class="label subhead__label">Matching evidence Â· deterministic</span>' + evidenceRows(ev) + "</div>" +
+      '<div class="subhead subhead--authority"><span class="label subhead__label">Matching evidence · deterministic</span>' + evidenceRows(ev) + "</div>" +
       '<div data-review-out></div>'
     );
   }
@@ -1441,7 +1441,7 @@
       btn.addEventListener("click", function () {
         var label = btn.textContent;
         btn.disabled = true;
-        btn.textContent = "Workingâ€¦";
+        btn.textContent = "Working…";
         if (btn.dataset.retry === "ai-review") reviewTransaction(tid, btn, label, scope);
         else retryTransaction(tid, btn, label, btn.dataset.retry, scope);
       });
@@ -1481,7 +1481,7 @@
       if (!res.ok) throw new Error(data.error || "Retry failed");
       var done = el("div", { className: "notice" });
       done.innerHTML = "<span><strong>" + esc(tid) + " resolved as " + esc(data.status || "MATCH") + ".</strong> " +
-        esc(data.rule || "") + (data.reason ? " Â· " + esc(data.reason) : "") + "</span>";
+        esc(data.rule || "") + (data.reason ? " · " + esc(data.reason) : "") + "</span>";
       slot.innerHTML = "";
       slot.appendChild(done);
       button.textContent = "Resolved";
@@ -1508,14 +1508,14 @@
       block.innerHTML = '<div class="machine__head">' + MACHINE_MARK +
         '<span class="machine__title">AI review</span>' +
         '<span class="tag ' + (unavailable ? "tag--quiet" : "tag--ink") + ' machine__state">' +
-        (unavailable ? "Gemini unavailable" : "Gemini Â· read-only") + "</span></div>" +
+        (unavailable ? "Gemini unavailable" : "Gemini · read-only") + "</span></div>" +
         '<dl class="facts">' +
-        factRow("Decision", review.decision || "â€”") +
+        factRow("Decision", review.decision || "—") +
         factRow("Confidence", review.confidence != null ? pct(Number(review.confidence) * 100) + "%" : "Unavailable", true) +
-        factRow("Rationale", review.rationale || "â€”") +
+        factRow("Rationale", review.rationale || "—") +
         factRow("Evidence", evidenceText(review.evidence || {}), true) +
         '</dl><p class="machine__note">' + (unavailable
-          ? "No provider answered, so this is the stored pipeline result read back â€” not a model judgement."
+          ? "No provider answered, so this is the stored pipeline result read back — not a model judgement."
           : "A model assessment of stored context. It cannot change status, select rows, or alter the settlement; the stored result is untouched.") + "</p>";
       slot.innerHTML = "";
       slot.appendChild(block);
@@ -1530,7 +1530,7 @@
     }
   }
 
-  /* â”€â”€ Settlement Intelligence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Settlement Intelligence ──────────────────────────────────────── */
 
   function initQA() {
     if (_qaInited) return _qaReady;
@@ -1602,7 +1602,7 @@
     /* The position is an identity, so it prints as one: expected, actual, the
        difference between them, and how much of it the engine actually reported. */
     var positionLedger =
-      ledgerLine("expected net Â· " + rows.length + " settlements", expected) +
+      ledgerLine("expected net · " + rows.length + " settlements", expected) +
       ledgerLine("actual bank", actual) +
       ledgerLine("= difference", difference, "sum") +
       ledgerLine("reported by settlement rows", variance) +
@@ -1635,13 +1635,13 @@
       ? '<div class="subhead"><span class="label subhead__label">Evidence case</span><dl class="facts">' +
         factRow("Transaction", focus.transaction_id, true) +
         factRow("Status", focus.status) +
-        factRow("Bank rows", (focus.bank_row_ids || []).join(", ") || "â€”", true) +
-        factRow("Reason", focus.reason || "â€”") +
+        factRow("Bank rows", (focus.bank_row_ids || []).join(", ") || "—", true) +
+        factRow("Reason", focus.reason || "—") +
         "</dl></div>"
       : '<div class="empty"><strong>No Stage 3 evidence</strong>This run returned no split-settlement detail.</div>';
 
     host.innerHTML =
-      '<div class="block"><div class="block__head"><h2>Settlement position</h2><p>Stage 3 results only Â· INR</p></div>' +
+      '<div class="block"><div class="block__head"><h2>Settlement position</h2><p>Stage 3 results only · INR</p></div>' +
         '<div class="block__body">' + '<div class="ledger">' + positionLedger + "</div>" +
           '<div class="metrics" style="margin-top:.9rem">' + metrics.map(function (m) {
             return '<div class="metric"><span class="label metric__k">' + esc(m[0]) + '</span><span class="metric__v">' + esc(m[1]) +
@@ -1659,7 +1659,7 @@
               return "<tr><td>" + esc(r[0]) + '</td><td class="num">' + r[1] + '</td><td class="num">' + pct(evaluated ? r[1] / evaluated * 100 : 0) + "%</td></tr>";
             }).join("") + "</tbody></table></div></div></div>" +
 
-      '<div class="block"><div class="block__head"><h2>Grounded question</h2><p>Deterministic answer first Â· citations retained Â· AI optional</p></div>' +
+      '<div class="block"><div class="block__head"><h2>Grounded question</h2><p>Deterministic answer first · citations retained · AI optional</p></div>' +
         '<div class="block__body">' +
           '<div class="log" id="qa-log"><div class="empty"><strong>No question asked yet</strong>Use a prompt below, or the command line at the top of the console.</div></div>' +
           '<div class="command__hints" style="border:0;padding-inline:0">' + hint.map(function (q) {
@@ -1674,7 +1674,7 @@
             '<th scope="col">Transaction</th><th scope="col">Reason</th><th scope="col" class="num">Variance</th></tr></thead><tbody>' +
             (reasons.length ? reasons.map(function (r) {
               return '<tr><td><span class="id">' + esc(r.transaction_id) + '</span><span class="sub">' + esc(r.status || "") + "</span></td>" +
-                '<td style="max-width:24ch">' + softTokens(r.reason || "â€”") + '</td><td class="num">' + esc(inr(r.settlement.variance)) + "</td></tr>";
+                '<td style="max-width:24ch">' + softTokens(r.reason || "—") + '</td><td class="num">' + esc(inr(r.settlement.variance)) + "</td></tr>";
             }).join("") : '<tr><td colspan="3"><div class="empty"><strong>No settlement mismatch</strong>Every evaluated settlement closes within tolerance.</div></td></tr>') +
             "</tbody></table></div></div></div>" +
 
@@ -1745,7 +1745,7 @@
     switchPanel(PANEL_META[initial] ? initial : "overview");
   }
 
-  /* â”€â”€ Boot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+  /* ── Boot ─────────────────────────────────────────────────────────── */
 
   document.addEventListener("DOMContentLoaded", function () {
     var toggle = document.getElementById("theme-toggle");

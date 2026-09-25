@@ -23,6 +23,48 @@ import app as server_module
 from app import app
 
 
+# Windows-1252 leaves five bytes undefined and a JVM-style decode falls back to
+# the Latin-1 code point for them. That table is what turns UTF-8 into "Â·" and
+# "â€”" when text is written through a cp1252 pipe, so the guard below rebuilds
+# it to recognise the damage.
+_CP1252_UNDEFINED = {0x81, 0x8D, 0x8F, 0x90, 0x9D}
+_SUSPECT = {chr(b) for b in range(0x80, 0x100)}
+for _byte in range(0x80, 0xA0):
+    _SUSPECT.add(chr(_byte))
+    if _byte not in _CP1252_UNDEFINED:
+        _SUSPECT.add(bytes([_byte]).decode("cp1252"))
+
+
+def _broken_encoding_runs(text):
+    """Return the runs of text that are really UTF-8 read as windows-1252.
+
+    An intact em dash, middle dot or ellipsis encodes to bytes that are not
+    valid UTF-8 on their own, so only genuinely mangled runs are reported.
+    """
+    def to_byte(ch):
+        try:
+            return ch.encode("cp1252")
+        except UnicodeEncodeError:
+            return bytes([ord(ch)]) if ord(ch) in _CP1252_UNDEFINED else None
+
+    runs, current = [], []
+    for ch in text + "\n":
+        if ch in _SUSPECT:
+            current.append(ch)
+            continue
+        if current:
+            pieces = [to_byte(c) for c in current]
+            if None not in pieces:
+                try:
+                    b"".join(pieces).decode("utf-8")
+                except UnicodeDecodeError:
+                    pass
+                else:
+                    runs.append("".join(current))
+            current = []
+    return runs
+
+
 class RetryUnavailableLLM:
     def complete(self, system, user):
         from core.match_llm import LLMUnavailableError
@@ -716,6 +758,15 @@ class TestStaticRoutes(unittest.TestCase):
         self.assertIn(".panel__head", css)
         self.assertNotIn("backdrop-filter", css)
         self.assertNotIn("linear-gradient", css)
+
+    def test_static_assets_are_utf8_and_free_of_mojibake(self):
+        """No asset may ship UTF-8 text decoded as cp1252 (regression: "Â·", "â€”")."""
+        for path in ("/", "/app", "/app.js", "/styles.css"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertIn("charset=utf-8", response.content_type)
+                runs = _broken_encoding_runs(response.get_data(as_text=True))
+                self.assertEqual(runs, [], "%s contains broken text encoding" % path)
 
 
 class TestPipelineIsolation(unittest.TestCase):
